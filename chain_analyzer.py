@@ -1,4 +1,4 @@
-"""Vulnerability chain analyzer for NPUHacker.
+"""Vulnerability chain analyzer for Project Triage.
 
 After every new finding, evaluates whether current findings can combine
 into higher-severity chains. This closes the #1 capability gap between

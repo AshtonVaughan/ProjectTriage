@@ -1,4 +1,4 @@
-"""Shared utilities for NPUHacker v2."""
+"""Shared utilities for Project Triage v4."""
 
 from __future__ import annotations
 

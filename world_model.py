@@ -7,7 +7,7 @@ from typing import Any
 
 
 class WorldModel:
-    """Persistent structured fact store for the NPUHacker autonomous pentesting agent.
+    """Persistent structured fact store for the Project Triage autonomous pentesting agent.
 
     Replaces lossy LLM context compression with an explicit, structured world
     model that the agent reads and writes on every step.  Backed by a JSON file

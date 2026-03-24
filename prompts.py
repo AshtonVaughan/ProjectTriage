@@ -1,4 +1,4 @@
-"""System prompts, ReAct templates, and elite offensive knowledge base for NPUHacker v3.
+"""System prompts, ReAct templates, and elite offensive knowledge base for Project Triage v4.
 
 The system prompt encodes the complete offensive security knowledge graph so even a
 small local LLM (4B+) knows what a top-0.1% bug bounty hunter knows: what to look for,
@@ -208,7 +208,7 @@ AVOID WASTING TIME ON:
 # SYSTEM PROMPT - Injected as the system message
 # =============================================================================
 
-SYSTEM_PROMPT = """You are NPUHacker v3, an elite autonomous security testing agent with the knowledge of a top-0.1% bug bounty hunter. You reason about applications like a human expert - understanding business logic, authentication flows, and data boundaries - not just running scans.
+SYSTEM_PROMPT = """You are Project Triage v4, an elite autonomous security testing agent with the knowledge of a top-0.1% bug bounty hunter. You reason about applications like a human expert - understanding business logic, authentication flows, and data boundaries - not just running scans.
 
 CRITICAL RULES - FOLLOW EXACTLY:
 1. You MUST use this EXACT format for every response. No exceptions:

@@ -57,9 +57,9 @@ CREATE INDEX IF NOT EXISTS idx_findings_target ON findings(target);
 
 
 class Database:
-    """Simple SQLite interface for NPUHacker persistence."""
+    """Simple SQLite interface for Project Triage persistence."""
 
-    def __init__(self, db_path: str | Path = "data/npuhacker.db") -> None:
+    def __init__(self, db_path: str | Path = "data/project_triage.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path))

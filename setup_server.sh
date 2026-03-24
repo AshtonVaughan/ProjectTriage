@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# NPUHacker v3 - vast.ai / GPU Server Setup Script
+# Project Triage v3 - vast.ai / GPU Server Setup Script
 # RTX PRO 6000 Blackwell (96GB VRAM) configuration
 # =============================================================================
 #
@@ -9,13 +9,13 @@
 #   2. Upload this file: scp setup_server.sh root@<IP>:/root/
 #   3. Run: bash setup_server.sh
 #
-# This installs: Ollama + security tools + NPUHacker + recommended models
+# This installs: Ollama + security tools + Project Triage + recommended models
 # =============================================================================
 
 set -e
 
 echo "============================================="
-echo "  NPUHacker v3 - Server Setup"
+echo "  Project Triage v3 - Server Setup"
 echo "  GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'detecting...')"
 echo "  VRAM: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null || echo 'detecting...')"
 echo "============================================="
@@ -97,19 +97,19 @@ echo "Models pulled:"
 ollama list
 
 # ---------------------------------------------------------------------------
-# 4. Clone and setup NPUHacker
+# 4. Clone and setup Project Triage
 # ---------------------------------------------------------------------------
 echo ""
-echo "[4/5] Setting up NPUHacker..."
+echo "[4/5] Setting up Project Triage..."
 cd /root
 
-if [ ! -d "NPUHacker" ]; then
-    echo "Creating NPUHacker directory..."
-    mkdir -p NPUHacker
-    echo "(Upload your NPUHacker files here)"
+if [ ! -d "Project Triage" ]; then
+    echo "Creating Project Triage directory..."
+    mkdir -p Project Triage
+    echo "(Upload your Project Triage files here)"
 fi
 
-cd NPUHacker
+cd Project Triage
 
 # Create venv and install deps
 if [ ! -d ".venv" ]; then
@@ -126,12 +126,12 @@ echo "[5/5] Creating run script..."
 
 cat > /root/run_hunt.sh << 'RUNEOF'
 #!/bin/bash
-# NPUHacker v3 - Run a hunt with dual-model architecture
+# Project Triage v3 - Run a hunt with dual-model architecture
 # Usage: bash run_hunt.sh <target>
 
 TARGET="${1:?Usage: bash run_hunt.sh <target_domain>}"
 
-cd /root/NPUHacker
+cd /root/Project Triage
 source .venv/bin/activate
 
 # Dual-model configuration:
@@ -165,7 +165,7 @@ echo "To run a hunt:"
 echo "  bash /root/run_hunt.sh <target_domain>"
 echo ""
 echo "Or manually:"
-echo "  cd /root/NPUHacker && source .venv/bin/activate"
+echo "  cd /root/Project Triage && source .venv/bin/activate"
 echo "  python3 main.py -t example.com --model qwen3.5:32b --fast-model qwen3.5:4b"
 echo ""
 echo "GPU Status:"

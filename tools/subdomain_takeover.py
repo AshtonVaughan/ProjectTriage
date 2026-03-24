@@ -1,4 +1,4 @@
-"""Subdomain takeover detection tool for NPUHacker autonomous pentesting agent."""
+"""Subdomain takeover detection tool for Project Triage autonomous pentesting agent."""
 
 from __future__ import annotations
 

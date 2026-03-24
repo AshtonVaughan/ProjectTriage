@@ -1,12 +1,20 @@
-"""ReAct agent loop v3 - hypothesis-driven attack graph with persistent world model.
+"""Project Triage v4 - Hypothesis-driven attack graph with elite reasoning.
 
-Replaces the linear phase pipeline with:
-1. Hypothesis-driven graph traversal (attack_graph.py)
-2. Persistent structured world model (world_model.py)
-3. Vulnerability chain analysis (chain_analyzer.py)
-4. Multi-role authorization testing (auth_context.py)
-5. Race condition detection (tools/race.py)
-6. Tech-stack fingerprinting (tech_fingerprint.py)
+Architecture:
+1. Source intelligence (GitHub, Wayback, CNAME, API specs)
+2. Tech fingerprinting -> framework-specific hypothesis generation
+3. Assumption archaeology -> novel hypothesis generation
+4. Intent modeling -> business logic violation tests
+5. Hypothesis-driven attack graph (not linear phases)
+6. AGoT reasoning (multi-path exploration with self-critique)
+7. Persistent world model with MFR (trust boundaries, data flows, state machines)
+8. Chain analysis with connector bug reasoning
+9. Edge analysis (inter-component boundary testing)
+10. Coverage asymmetry (prioritize under-tested surfaces)
+11. Multi-role auth testing (IDOR, auth bypass, JWT)
+12. Workflow testing (skip-step, race, OAuth 7-point)
+13. Quality gate (4-layer validation, confidence scoring, anti-noise)
+14. Cross-session strategy memory
 """
 
 from __future__ import annotations
@@ -17,16 +25,21 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
+from agot_reasoner import AGoTReasoner
+from assumption_engine import AssumptionEngine
 from attack_graph import AttackGraph
 from auth_context import AuthContext
 from chain_analyzer import ChainAnalyzer
 from config import Config
 from context import ContextManager, Step
 from cost_tracker import CostTracker
+from coverage_asymmetry import CoverageAsymmetryDetector
 from db import Database
 from disclosures import DisclosureLookup
+from edge_analyzer import EdgeAnalyzer
 from evidence import EvidenceCapture
 from hypothesis import Hypothesis, HypothesisEngine
+from intent_model import IntentModel
 from js_analyzer import analyze_target as js_analyze_target, integrate_with_target_model
 from knowledge import format_knowledge_context, get_chain_suggestions, PIVOT_RULES, get_methodology
 from memory import TargetMemory
@@ -37,10 +50,12 @@ from provider import Provider, ReActResponse
 from sanitizer import sanitize_action, sanitize_inputs
 from scope import Scope
 from session import SessionRecorder
+from source_intel import SourceIntel
 from target_model import TargetModel
 from tech_fingerprint import TechFingerprinter
 from tool_registry import ToolRegistry
 from validator import Validator
+from workflow_tester import WorkflowTester
 from world_model import WorldModel
 
 # Maximum raw observation size before compression (bytes)
@@ -73,6 +88,13 @@ class Agent:
         self.fingerprinter = TechFingerprinter()
         self.auth_context = AuthContext()
         self.disclosures = DisclosureLookup()
+        # v4 modules
+        self.assumption_engine = AssumptionEngine()
+        self.intent_model = IntentModel()
+        self.edge_analyzer = EdgeAnalyzer()
+        self.coverage_detector = CoverageAsymmetryDetector()
+        self.workflow_tester = WorkflowTester()
+        self.agot = AGoTReasoner()
 
         # Initialized per-target in run()
         self.target_model: TargetModel | None = None
@@ -158,7 +180,7 @@ class Agent:
             + (f"[bold]Patterns:[/bold] {self.patterns.summary()}\n")
             + (f"[bold]Defenses:[/bold] {defenses[:200]}...\n" if defenses else "")
             + (f"[bold]Context:[/bold] {prior_context[:200]}...\n" if prior_context else ""),
-            title="[bold red]NPUHacker v3[/bold red]",
+            title="[bold red]Project Triage v4[/bold red]",
             border_style="red",
         ))
 
@@ -167,8 +189,12 @@ class Agent:
         self.registry.build_embeddings(self.provider.embed)
 
         # ============================================================
-        # PHASE A: Parallel recon + fingerprinting + JS analysis
+        # PHASE A: Intelligence Gathering
         # ============================================================
+
+        # Source intelligence (GitHub, Wayback, CNAME, API specs)
+        self.console.print("\n[bold cyan]>>> Source Intelligence[/bold cyan]")
+        self._run_source_intel(target)
 
         # Run parallel recon if target model is stale
         if self.target_model.is_stale:
@@ -190,8 +216,28 @@ class Agent:
         self.console.print("\n[bold cyan]>>> Crown Jewels Identification[/bold cyan]")
         self._detect_crown_jewels(target)
 
+        # ============================================================
+        # PHASE B: Hypothesis Generation (all engines)
+        # ============================================================
+
         # Generate initial hypotheses from recon + fingerprinting
         self._generate_initial_hypotheses(target)
+
+        # Assumption archaeology - generate novel hypotheses
+        self.console.print("[bold cyan]>>> Assumption Archaeology[/bold cyan]")
+        self._run_assumption_engine(target)
+
+        # Intent model - business logic violation tests
+        self.console.print("[bold cyan]>>> Intent Modeling[/bold cyan]")
+        self._run_intent_model(target)
+
+        # Coverage asymmetry - boost under-tested surfaces
+        self.console.print("[bold cyan]>>> Coverage Asymmetry Analysis[/bold cyan]")
+        self._run_coverage_analysis()
+
+        # Edge analysis hypotheses
+        self.console.print("[bold cyan]>>> Inter-Component Edge Analysis[/bold cyan]")
+        self._run_edge_analysis(target)
 
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
@@ -645,6 +691,218 @@ class Agent:
                 self.console.print(f"[dim]No prior disclosures found for '{handle}'[/dim]")
         except Exception as e:
             self.console.print(f"[dim]Disclosure check skipped: {e}[/dim]")
+
+    def _run_source_intel(self, target: str) -> None:
+        """Run source intelligence gathering - GitHub, Wayback, CNAME, API specs."""
+        try:
+            si = SourceIntel(target)
+            report = si.full_recon()
+
+            # Feed Wayback URLs into world model
+            wayback_urls = report.get("wayback_urls", [])
+            if wayback_urls:
+                self.console.print(f"[cyan]Wayback: {len(wayback_urls)} archived URLs recovered[/cyan]")
+                for url in wayback_urls[:50]:
+                    if self.world:
+                        self.world.mark_surface_tested(url, "wayback_discovery", 0)
+
+            # Feed API specs
+            specs = report.get("api_specs", [])
+            if specs:
+                self.console.print(f"[cyan]API specs: {len(specs)} discovered[/cyan]")
+
+            # Feed GitHub repos
+            repos = report.get("github_repos", [])
+            if repos:
+                self.console.print(f"[cyan]GitHub: {len(repos)} related repos found[/cyan]")
+
+            # Feed JS endpoints (enhanced)
+            js = report.get("js_endpoints", {})
+            secrets = js.get("secrets", [])
+            if secrets:
+                self.console.print(f"[bold red]>>> {len(secrets)} secrets in source intelligence![/bold red]")
+                if self.world:
+                    for s in secrets:
+                        self.world.add_credential(
+                            type=s.get("type", "unknown"),
+                            value=str(s.get("value", ""))[:50],
+                            scope="source_intel",
+                        )
+
+            # Feed CNAME chains
+            cname = report.get("cname_chains", {})
+            if cname:
+                for sub, chain in cname.items() if isinstance(cname, dict) else []:
+                    if chain:
+                        self.console.print(f"[cyan]CNAME: {sub} -> {' -> '.join(chain[:3])}[/cyan]")
+
+            self.console.print(f"[dim]{report.get('summary', 'Source intel complete')}[/dim]")
+
+        except Exception as e:
+            self.console.print(f"[dim]Source intel skipped: {e}[/dim]")
+
+    def _run_assumption_engine(self, target: str) -> None:
+        """Generate novel hypotheses via assumption archaeology."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get all known endpoints from target model + world model
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = self.target_model.data["endpoints"]
+
+            created = []
+            for ep in endpoints[:30]:
+                ep_url = ep.get("url", url)
+                method = ep.get("method", "GET")
+                # Extract parameter names from URL
+                import re
+                params = re.findall(r'[?&](\w+)=', ep_url)
+
+                assumptions = self.assumption_engine.generate_assumptions(
+                    ep_url, method, params, tech_stack
+                )
+                hyp_dicts = self.assumption_engine.assumptions_to_hypotheses(assumptions[:5])
+                for h in hyp_dicts:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", ep_url),
+                        technique=h.get("technique", "assumption_violation"),
+                        description=h.get("description", ""),
+                        novelty=h.get("novelty", 7),
+                        exploitability=h.get("exploitability", 6),
+                        impact=h.get("impact", 7),
+                        effort=h.get("effort", 3),
+                    )
+                    if hyp:
+                        created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} assumption-based hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Assumption engine skipped: {e}[/dim]")
+
+    def _run_intent_model(self, target: str) -> None:
+        """Generate business logic violation tests via intent modeling."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get endpoints
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = self.target_model.data["endpoints"]
+
+            created = []
+            for ep in endpoints[:20]:
+                ep_url = ep.get("url", url)
+                method = ep.get("method", "GET")
+                import re
+                params = re.findall(r'[?&](\w+)=', ep_url)
+
+                violations = self.intent_model.generate_violation_tests(
+                    ep_url, method, params, tech_stack
+                )
+                hyp_dicts = self.intent_model.violations_to_hypotheses(violations[:5])
+                for h in hyp_dicts:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", ep_url),
+                        technique=h.get("technique", "intent_violation"),
+                        description=h.get("description", ""),
+                        novelty=h.get("novelty", 7),
+                        exploitability=h.get("exploitability", 7),
+                        impact=h.get("impact", 8),
+                        effort=h.get("effort", 3),
+                    )
+                    if hyp:
+                        created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} intent-violation hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Intent model skipped: {e}[/dim]")
+
+    def _run_coverage_analysis(self) -> None:
+        """Boost hypothesis scores for under-tested surfaces."""
+        if not self.attack_graph:
+            return
+        try:
+            # Assess all endpoints in hypothesis queue
+            assessments = []
+            for hyp in self.attack_graph.hypothesis_queue:
+                assessment = self.coverage_detector.assess_surface(hyp.endpoint)
+                assessments.append(assessment)
+
+            # Count coverage distribution
+            low_count = sum(1 for a in assessments if a.estimated_coverage in ("low", "untested"))
+            if low_count > 0:
+                self.console.print(
+                    f"[cyan]{low_count}/{len(assessments)} hypotheses target under-tested surfaces (boosted)[/cyan]"
+                )
+
+            # Apply boosts - modify hypothesis scores in-place
+            for hyp, assessment in zip(self.attack_graph.hypothesis_queue, assessments):
+                if assessment.priority_boost > 1.0:
+                    hyp.total_score *= assessment.priority_boost
+            self.attack_graph._sort_queue()
+
+        except Exception as e:
+            self.console.print(f"[dim]Coverage analysis skipped: {e}[/dim]")
+
+    def _run_edge_analysis(self, target: str) -> None:
+        """Generate hypotheses for inter-component boundary testing."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Identify component stack
+            components = self.edge_analyzer.identify_components(url, {}, tech_stack)
+            if len(components) < 2:
+                self.console.print("[dim]Not enough components identified for edge analysis[/dim]")
+                return
+
+            self.console.print(f"[cyan]Components: {' -> '.join(components)}[/cyan]")
+
+            # Build component graph in world model
+            if self.world:
+                for i, comp in enumerate(components):
+                    connects = [components[i+1]] if i < len(components) - 1 else []
+                    self.world.add_component(comp, "detected", connects)
+                # Add trust boundaries between adjacent components
+                for i in range(len(components) - 1):
+                    self.world.add_trust_boundary(
+                        components[i], components[i+1],
+                        "component_boundary",
+                    )
+
+            # Generate edge tests
+            edges = self.edge_analyzer.generate_edge_tests(components, url)
+            created = []
+            for edge in edges[:15]:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=url,
+                    technique=f"edge_{edge.data_type}",
+                    description=f"Edge test: {edge.disagreement} between {edge.upstream} and {edge.downstream}",
+                    novelty=8, exploitability=7,
+                    impact=9 if edge.severity == "critical" else 7,
+                    effort=4,
+                )
+                if hyp:
+                    created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} edge-analysis hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Edge analysis skipped: {e}[/dim]")
 
     def _generate_initial_hypotheses(self, target: str) -> None:
         """Generate initial hypotheses from recon data + patterns + defaults."""

@@ -78,8 +78,8 @@ def _build_user_payload(label: str) -> dict[str, str]:
     label is 'a' or 'b' - used to distinguish the two test accounts.
     """
     suffix = _random_suffix()
-    username = f"npuhacker_{label}_{suffix}"
-    email = f"npuhacker_{label}_{suffix}@mailinator.com"
+    username = f"project_triage_{label}_{suffix}"
+    email = f"project_triage_{label}_{suffix}@mailinator.com"
     password = f"Npu!{suffix[:4].upper()}{suffix[4:]}"
     return {
         "username": username,

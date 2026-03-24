@@ -24,7 +24,7 @@ from utils import run_cmd
 # Constants
 # ---------------------------------------------------------------------------
 
-_UA = "NPUHacker-SourceIntel/1.0 (security-research)"
+_UA = "Project Triage-SourceIntel/1.0 (security-research)"
 
 _INTERESTING_PATH_RE = re.compile(
     r"(?:/api/|/admin/|/internal/|/debug/|/v[0-9]+/|/graphql"

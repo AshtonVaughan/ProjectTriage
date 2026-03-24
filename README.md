@@ -349,7 +349,7 @@ findings/{target}/
     sessions/                 # Full session replay JSON
 
 data/
-    npuhacker.db              # SQLite: hypotheses, findings, sessions
+    project_triage.db              # SQLite: hypotheses, findings, sessions
     patterns.json             # Cross-target learned patterns (max 50)
 ```
 

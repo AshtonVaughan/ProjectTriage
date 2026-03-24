@@ -1,4 +1,4 @@
-"""HTTP request smuggling / desync detection tool for NPUHacker."""
+"""HTTP request smuggling / desync detection tool for Project Triage."""
 
 from __future__ import annotations
 

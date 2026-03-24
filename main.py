@@ -1,4 +1,4 @@
-"""NPUHacker v2 - Universal agentic security testing on any local LLM."""
+"""Project Triage v4 - Universal agentic security testing on any local LLM."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def build_registry(config: Config) -> ToolRegistry:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="NPUHacker v2 - Agentic security testing on any local LLM",
+        description="Project Triage v4 - Agentic security testing on any local LLM",
     )
     parser.add_argument("--target", "-t", help="Target domain or URL to test")
     parser.add_argument("--model", "-m", default=None, help="Model name (default: auto-detect first available)")
@@ -217,7 +217,7 @@ def _show_dry_run(
         f"[bold]Max Context:[/bold] {config.max_context_tokens} tokens\n"
         f"[bold]Max Steps/Phase:[/bold] {config.max_steps_per_phase}\n"
         f"\n[bold]Available Tools ({len(registry.tools)}):[/bold]",
-        title="[bold]NPUHacker v2 Config[/bold]",
+        title="[bold]Project Triage v4 Config[/bold]",
     ))
     for tool in registry.all_tools():
         console.print(f"  [green]{tool.name}[/green]: {tool.description[:80]}")

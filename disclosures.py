@@ -67,7 +67,7 @@ class DisclosureLookup:
                 headers={
                     "Content-Type": "application/json",
                     "Accept": "application/json",
-                    "User-Agent": "NPUHacker/2.0",
+                    "User-Agent": "Project Triage/2.0",
                 },
                 method="POST",
             )

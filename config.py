@@ -1,4 +1,4 @@
-"""Configuration and environment setup for NPUHacker v2."""
+"""Configuration and environment setup for Project Triage v4."""
 
 import os
 import shutil
@@ -68,4 +68,4 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "npuhacker.db"
+        return self.data_dir / "project_triage.db"

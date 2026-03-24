@@ -1,4 +1,4 @@
-"""Elite offensive security knowledge base for NPUHacker v3.
+"""Elite offensive security knowledge base for Project Triage v4.
 
 This module encodes the decision trees, attack patterns, and heuristics that
 separate top-0.1% bug bounty hunters from script kiddies. It's structured as

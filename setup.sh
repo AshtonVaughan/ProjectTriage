@@ -3,7 +3,7 @@ set -e
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
 VRAM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
 GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
-echo -e "${CYAN}============================================="; echo "  NPUHacker v3 - Server Setup"; echo "  GPU: ${GPU}"; echo "  VRAM: ${VRAM} MB"; echo "=============================================${NC}"; echo ""
+echo -e "${CYAN}============================================="; echo "  Project Triage v3 - Server Setup"; echo "  GPU: ${GPU}"; echo "  VRAM: ${VRAM} MB"; echo "=============================================${NC}"; echo ""
 
 echo -e "${YELLOW}[1/6] System packages...${NC}"
 apt-get update -qq 2>/dev/null; apt-get install -y -qq curl wget git python3-pip python3-venv nmap jq dnsutils net-tools 2>/dev/null
@@ -42,14 +42,14 @@ echo ""; echo -e "${YELLOW}[6/6] Verifying...${NC}"
 ERRORS=0
 python3 -c "from openai import OpenAI; from rich.console import Console; import numpy" 2>/dev/null && echo -e "${GREEN}  Python deps OK${NC}" || { echo -e "${RED}  Python deps FAILED${NC}"; ERRORS=$((ERRORS+1)); }
 curl -s http://127.0.0.1:11434/api/tags | python3 -c "import sys,json; models=[m['name'] for m in json.load(sys.stdin)['models']]; print('  Models:', ', '.join(models))" 2>/dev/null && echo -e "${GREEN}  Ollama OK${NC}" || { echo -e "${RED}  Ollama FAILED${NC}"; ERRORS=$((ERRORS+1)); }
-python3 -c "from agent import Agent; from main import build_registry" 2>/dev/null && echo -e "${GREEN}  NPUHacker OK${NC}" || { echo -e "${RED}  NPUHacker FAILED${NC}"; ERRORS=$((ERRORS+1)); }
+python3 -c "from agent import Agent; from main import build_registry" 2>/dev/null && echo -e "${GREEN}  Project Triage OK${NC}" || { echo -e "${RED}  Project Triage FAILED${NC}"; ERRORS=$((ERRORS+1)); }
 echo -n "  Tools: "; for tool in nmap subfinder httpx nuclei sqlmap curl; do command -v $tool &>/dev/null && echo -n "$tool "; done; echo ""
 
 cat > /root/hunt.sh << HUNTEOF
 #!/bin/bash
 TARGET="\${1:?Usage: bash hunt.sh <target>}"
 STEPS="\${2:-20}"
-cd /root/NPUHacker
+cd /root/Project Triage
 python3 main.py -t "\$TARGET" -m "${MAIN_MODEL}" --fast-model "${FAST_MODEL}" --embed-model nomic-embed-text -p ollama --max-steps "\$STEPS" --ctx-tokens 32768
 HUNTEOF
 chmod +x /root/hunt.sh

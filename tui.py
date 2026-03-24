@@ -1,4 +1,4 @@
-"""Interactive TUI for NPUHacker - arrow-key menus, model selection, settings."""
+"""Interactive TUI for Project Triage - arrow-key menus, model selection, settings."""
 
 from __future__ import annotations
 
@@ -310,7 +310,7 @@ def main_menu(console: Console) -> dict[str, Any] | None:
     while True:
         console.clear()
         console.print(Panel(
-            "[bold red]NPUHacker v2[/bold red]\n"
+            "[bold red]Project Triage v4[/bold red]\n"
             "[dim]Universal Agentic Security Testing[/dim]",
             border_style="red",
             padding=(1, 4),
