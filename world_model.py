@@ -306,6 +306,12 @@ class WorldModel:
             "crown_jewels": [],
             "tech_stack": {},
             "tested_surfaces": [],
+            # MFR (Model-First Reasoning) additions
+            "trust_boundaries": [],     # Where trust level changes between components
+            "data_flows": [],           # How data moves between components
+            "state_machines": {},       # Intended state machines per workflow
+            "component_graph": [],      # Component relationships (CDN -> proxy -> app -> db)
+            "assumptions": [],          # Developer assumptions identified by assumption engine
         }
         if self._path.exists():
             try:
@@ -320,6 +326,103 @@ class WorldModel:
                 # Corrupt or unreadable - start fresh.
                 return empty
         return empty
+
+    # ------------------------------------------------------------------
+    # MFR (Model-First Reasoning) methods
+    # ------------------------------------------------------------------
+
+    def add_trust_boundary(self, upstream: str, downstream: str, boundary_type: str, notes: str = "") -> None:
+        """Record a trust boundary between two components."""
+        boundary = {"upstream": upstream, "downstream": downstream, "type": boundary_type, "notes": notes}
+        if boundary not in self._data["trust_boundaries"]:
+            self._data["trust_boundaries"].append(boundary)
+
+    def add_data_flow(self, source: str, destination: str, data_type: str, trust_level: str = "unknown") -> None:
+        """Record how data flows between components."""
+        flow = {"source": source, "destination": destination, "data_type": data_type, "trust_level": trust_level}
+        if flow not in self._data["data_flows"]:
+            self._data["data_flows"].append(flow)
+
+    def add_component(self, name: str, component_type: str, connects_to: list[str] | None = None) -> None:
+        """Record a component in the architecture graph."""
+        component = {"name": name, "type": component_type, "connects_to": connects_to or []}
+        existing = [c for c in self._data["component_graph"] if c["name"] == name]
+        if not existing:
+            self._data["component_graph"].append(component)
+        elif connects_to:
+            existing[0]["connects_to"] = list(set(existing[0].get("connects_to", []) + connects_to))
+
+    def set_state_machine(self, workflow_name: str, states: list[str], transitions: list[dict]) -> None:
+        """Record the intended state machine for a workflow.
+
+        transitions: list of {from_state, to_state, action, endpoint}
+        """
+        self._data["state_machines"][workflow_name] = {
+            "states": states,
+            "transitions": transitions,
+        }
+
+    def add_assumption(self, feature: str, assumption: str, violation: str, status: str = "untested") -> None:
+        """Record a developer assumption identified by the assumption engine."""
+        entry = {"feature": feature, "assumption": assumption, "violation": violation, "status": status}
+        self._data["assumptions"].append(entry)
+
+    def get_mfr_context(self, max_chars: int = 2000) -> str:
+        """Build Model-First Reasoning context for LLM injection.
+
+        This gives the LLM an explicit model of the application's architecture,
+        trust boundaries, and data flows BEFORE it reasons about attacks.
+        """
+        parts: list[str] = []
+        char_count = 0
+
+        # Component graph
+        if self._data["component_graph"]:
+            section = "COMPONENTS: " + " -> ".join(
+                c["name"] for c in self._data["component_graph"][:8]
+            )
+            parts.append(section)
+            char_count += len(section)
+
+        # Trust boundaries
+        if self._data["trust_boundaries"]:
+            section = "TRUST BOUNDARIES:\n" + "\n".join(
+                f"  {b['upstream']} -> {b['downstream']}: {b['type']}"
+                for b in self._data["trust_boundaries"][:5]
+            )
+            if char_count + len(section) < max_chars:
+                parts.append(section)
+                char_count += len(section)
+
+        # Data flows
+        if self._data["data_flows"]:
+            section = "DATA FLOWS:\n" + "\n".join(
+                f"  {f['source']} -> {f['destination']}: {f['data_type']} (trust: {f['trust_level']})"
+                for f in self._data["data_flows"][:5]
+            )
+            if char_count + len(section) < max_chars:
+                parts.append(section)
+                char_count += len(section)
+
+        # State machines
+        for wf_name, sm in list(self._data["state_machines"].items())[:3]:
+            section = f"WORKFLOW '{wf_name}': states={sm['states']}"
+            if char_count + len(section) < max_chars:
+                parts.append(section)
+                char_count += len(section)
+
+        # Untested assumptions
+        untested = [a for a in self._data["assumptions"] if a["status"] == "untested"]
+        if untested:
+            section = f"UNTESTED ASSUMPTIONS ({len(untested)}):\n" + "\n".join(
+                f"  [{a['feature']}] {a['assumption']} -> violation: {a['violation']}"
+                for a in untested[:5]
+            )
+            if char_count + len(section) < max_chars:
+                parts.append(section)
+                char_count += len(section)
+
+        return "\n".join(parts)
 
     # ------------------------------------------------------------------
     # Display

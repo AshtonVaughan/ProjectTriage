@@ -477,3 +477,160 @@ class ChainAnalyzer:
             })
 
         return hypotheses
+
+    # ------------------------------------------------------------------
+    # Connector Bug Reasoning (v4 upgrade)
+    # ------------------------------------------------------------------
+
+    def find_connector_bugs(self, findings: list[dict]) -> list[dict]:
+        """Search for low-severity 'connector' bugs that would bridge high-severity chains.
+
+        The research finding: "A CVSS 4.9 bug enabled two CVSS 9.8 flaws.
+        The connector bug is the prize." This method identifies what LOW-severity
+        bugs, if found, would complete a critical chain.
+
+        Returns list of {connector_needed, chain_it_enables, search_strategy, severity_if_found}
+        """
+        connectors: list[dict] = []
+        finding_techniques = {f.get("technique", "").lower() for f in findings}
+
+        # Define what connectors enable what chains
+        connector_map = [
+            {
+                "have": ["ssrf"],
+                "need": "auth_bypass",
+                "chain": "SSRF blocked by auth -> auth bypass enables SSRF to IMDS",
+                "search": "Test for authentication bypass on the SSRF-vulnerable endpoint",
+                "severity": "critical",
+            },
+            {
+                "have": ["xss"],
+                "need": "cache_poisoning",
+                "chain": "XSS + cache poison = stored XSS affecting ALL users",
+                "search": "Test unkeyed headers on the XSS-vulnerable page",
+                "severity": "critical",
+            },
+            {
+                "have": ["xss"],
+                "need": "csrf_token_leak",
+                "chain": "XSS + CSRF token = account takeover",
+                "search": "Use XSS to read CSRF tokens from DOM, then forge account modification requests",
+                "severity": "critical",
+            },
+            {
+                "have": ["self_xss", "self-xss"],
+                "need": "login_csrf",
+                "chain": "Self-XSS + Login CSRF + OAuth = account takeover",
+                "search": "Check OAuth state parameter, test login CSRF via OAuth flow",
+                "severity": "critical",
+            },
+            {
+                "have": ["idor"],
+                "need": "data_export",
+                "chain": "IDOR + data export = mass data breach",
+                "search": "Find bulk export or download endpoints accessible via the IDOR",
+                "severity": "critical",
+            },
+            {
+                "have": ["idor"],
+                "need": "delete_operation",
+                "chain": "IDOR + delete = mass data destruction",
+                "search": "Test DELETE method on the IDOR-vulnerable endpoint",
+                "severity": "critical",
+            },
+            {
+                "have": ["open_redirect"],
+                "need": "oauth_flow",
+                "chain": "Open redirect + OAuth = token theft",
+                "search": "Test if open redirect can be used as OAuth redirect_uri",
+                "severity": "high",
+            },
+            {
+                "have": ["sqli", "sql_injection"],
+                "need": "file_write",
+                "chain": "SQLi + file write = RCE via webshell",
+                "search": "Test INTO OUTFILE or stacked queries for file write capability",
+                "severity": "critical",
+            },
+            {
+                "have": ["path_traversal"],
+                "need": "config_file",
+                "chain": "Path traversal + config file = credential exposure",
+                "search": "Read .env, config.json, database.yml, wp-config.php via traversal",
+                "severity": "critical",
+            },
+            {
+                "have": ["auth_bypass"],
+                "need": "admin_panel",
+                "chain": "Auth bypass + admin panel = full application takeover",
+                "search": "Enumerate admin endpoints accessible via the bypass",
+                "severity": "critical",
+            },
+            {
+                "have": ["ssrf"],
+                "need": "header_injection",
+                "chain": "SSRF + header injection = IMDSv2 bypass (AWS)",
+                "search": "Test CRLF injection in SSRF URL to add X-aws-ec2-metadata-token headers",
+                "severity": "critical",
+            },
+            {
+                "have": ["prototype_pollution"],
+                "need": "gadget_chain",
+                "chain": "Prototype pollution + gadget = RCE",
+                "search": "Identify framework gadgets (ejs, pug, handlebars) exploitable via pollution",
+                "severity": "critical",
+            },
+            {
+                "have": ["prompt_injection"],
+                "need": "tool_access",
+                "chain": "Prompt injection + tool access = RCE via AI",
+                "search": "Test if the LLM has access to code execution, file system, or API tools",
+                "severity": "critical",
+            },
+        ]
+
+        for mapping in connector_map:
+            have_keywords = mapping["have"]
+            if any(kw in technique for technique in finding_techniques for kw in have_keywords):
+                connectors.append({
+                    "connector_needed": mapping["need"],
+                    "chain_it_enables": mapping["chain"],
+                    "search_strategy": mapping["search"],
+                    "severity_if_found": mapping["severity"],
+                })
+
+        return connectors
+
+    def reverse_chain_search(self, desired_impact: str) -> list[dict]:
+        """Start from desired impact and work backward to find what's needed.
+
+        desired_impact: "admin_access", "data_breach", "rce", "account_takeover"
+        Returns what findings are needed to achieve that impact.
+        """
+        chains_by_impact = {
+            "admin_access": [
+                {"needs": ["auth_bypass", "admin_panel"], "chain": "Auth bypass -> admin panel access"},
+                {"needs": ["jwt_attack", "role_escalation"], "chain": "JWT forge admin token -> admin access"},
+                {"needs": ["idor", "admin_endpoint"], "chain": "IDOR on admin endpoint -> admin data"},
+            ],
+            "data_breach": [
+                {"needs": ["idor", "data_export"], "chain": "IDOR + export = mass data exfiltration"},
+                {"needs": ["sqli", "data_dump"], "chain": "SQL injection -> database dump"},
+                {"needs": ["ssrf", "internal_db"], "chain": "SSRF -> internal database access"},
+            ],
+            "rce": [
+                {"needs": ["sqli", "file_write"], "chain": "SQLi -> webshell upload -> RCE"},
+                {"needs": ["ssrf", "cloud_metadata", "iam_escalation"], "chain": "SSRF -> IMDS -> IAM -> Lambda/EC2 RCE"},
+                {"needs": ["prototype_pollution", "gadget_chain"], "chain": "Prototype pollution -> framework gadget -> RCE"},
+                {"needs": ["ssti"], "chain": "SSTI -> template engine RCE"},
+                {"needs": ["deserialization"], "chain": "Insecure deserialization -> RCE"},
+            ],
+            "account_takeover": [
+                {"needs": ["xss", "csrf_bypass"], "chain": "XSS -> steal CSRF token -> change email/password"},
+                {"needs": ["self_xss", "login_csrf"], "chain": "Self-XSS + login CSRF -> ATO"},
+                {"needs": ["idor", "password_reset"], "chain": "IDOR on password reset -> ATO"},
+                {"needs": ["oauth_bypass"], "chain": "OAuth redirect_uri manipulation -> token theft -> ATO"},
+            ],
+        }
+
+        return chains_by_impact.get(desired_impact, [])
