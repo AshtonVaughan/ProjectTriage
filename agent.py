@@ -53,8 +53,11 @@ from dom_analyzer import DOMAnalyzer
 from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
 from fuzzer import SmartFuzzer
+from h2_desync import H2DesyncTester
 from infra_scanner import InfraScanner
 from interactsh_client import InteractshClient
+from mcp_tester import MCPTester
+from monitor_mode import MonitorMode
 from evidence import EvidenceCapture
 from hypothesis import Hypothesis, HypothesisEngine
 from intent_model import IntentModel
@@ -74,6 +77,7 @@ from report_generator import ReportGenerator
 from sanitizer import sanitize_action, sanitize_inputs
 from scope import Scope
 from self_reflect import SelfReflector
+from source_analyzer import SourceAnalyzer
 from session import SessionRecorder
 from source_intel import SourceIntel
 from state_machine import StateMachineExtractor
@@ -146,10 +150,15 @@ class Agent:
         # Round 6 modules (fuzzing, supply chain)
         self.fuzzer = SmartFuzzer()
         self.supply_chain = SupplyChainAnalyzer()
-        # Critical gap modules (program intel, OOB callbacks, differential testing)
+        # Critical gap modules
         self.program_intel = ProgramIntelligence()
         self.oob = InteractshClient()
         self.differential = DifferentialEngine()
+        # High-priority gap modules
+        self.h2_desync = H2DesyncTester()
+        self.mcp_tester = MCPTester()
+        self.monitor = MonitorMode(config.data_dir)
+        self.source_analyzer = SourceAnalyzer()
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -285,9 +294,17 @@ class Agent:
         self.console.print("\n[bold cyan]>>> Tech Fingerprinting[/bold cyan]")
         self._run_fingerprinting(target)
 
+        # Monitor mode - detect attack surface changes since last session
+        self.console.print("\n[bold cyan]>>> Surface Change Detection[/bold cyan]")
+        self._run_monitor_check(target)
+
         # Infrastructure-class target identification
         self.console.print("\n[bold cyan]>>> Infrastructure Scanner ($100K methodology)[/bold cyan]")
         self._run_infra_scan(target)
+
+        # HTTP/2 desync detection
+        self.console.print("\n[bold cyan]>>> HTTP/2 Desync Detection[/bold cyan]")
+        self._run_h2_desync(target)
 
         # JS bundle analysis
         self.console.print("\n[bold cyan]>>> JS Bundle Analysis[/bold cyan]")
@@ -342,6 +359,14 @@ class Agent:
         # WebSocket endpoint discovery and hypothesis generation
         self.console.print("[bold cyan]>>> WebSocket Discovery[/bold cyan]")
         self._run_websocket_discovery(target)
+
+        # MCP/Agentic AI attack surface
+        self.console.print("[bold cyan]>>> MCP/AI Attack Surface[/bold cyan]")
+        self._run_mcp_analysis(target)
+
+        # Source code analysis (source maps, exposed repos)
+        self.console.print("[bold cyan]>>> Source Code Analysis[/bold cyan]")
+        self._run_source_analysis(target)
 
         # Differential testing hypotheses (IDOR/BOLA/BFLA)
         self.console.print("[bold cyan]>>> Differential Testing (IDOR/BOLA)[/bold cyan]")
@@ -1616,6 +1641,143 @@ class Agent:
 
         except Exception as e:
             self.console.print(f"[dim]Program intel skipped: {e}[/dim]")
+
+    def _run_monitor_check(self, target: str) -> None:
+        """Run surface change detection against previous snapshot."""
+        try:
+            changes = self.monitor.run_monitor_cycle(target)
+            if changes:
+                self.console.print(f"[bold red]>>> {len(changes)} attack surface changes detected![/bold red]")
+                for c in changes[:3]:
+                    self.console.print(f"  [{c.priority}] {c.detail}")
+                # Generate hypotheses from changes
+                if self.hypothesis_engine and self.attack_graph:
+                    hyps = self.monitor.generate_hypotheses_from_changes(changes)
+                    created = []
+                    for h in hyps:
+                        hyp = self.hypothesis_engine.create(
+                            endpoint=h.get("endpoint", target),
+                            technique=h.get("technique", "monitor_change"),
+                            description=h.get("description", ""),
+                            novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 7),
+                            impact=h.get("impact", 8), effort=h.get("effort", 2),
+                        )
+                        if hyp:
+                            created.append(hyp)
+                    if created:
+                        self.attack_graph.add_hypotheses(created)
+                        self.console.print(f"[cyan]{len(created)} change-based hypotheses generated[/cyan]")
+            else:
+                self.console.print("[dim]No surface changes since last session[/dim]")
+        except Exception as e:
+            self.console.print(f"[dim]Monitor check skipped: {e}[/dim]")
+
+    def _run_h2_desync(self, target: str) -> None:
+        """Run HTTP/2 desync detection and generate hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            h2_support = self.h2_desync.detect_h2_support(url)
+            if h2_support.get("h2_supported") or h2_support.get("h2c_supported"):
+                self.console.print(f"[cyan]HTTP/2: supported={h2_support['h2_supported']}, h2c={h2_support['h2c_supported']}[/cyan]")
+                endpoints = []
+                if self.target_model and self.target_model.data.get("endpoints"):
+                    endpoints = [ep.get("url", "") if isinstance(ep, dict) else str(ep) for ep in self.target_model.data["endpoints"][:30]]
+                hyps = self.h2_desync.generate_hypotheses(url, h2_support, endpoints)
+                created = []
+                for h in hyps:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", url), technique=h.get("technique", "h2_desync"),
+                        description=h.get("description", ""),
+                        novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 7),
+                        impact=h.get("impact", 10), effort=h.get("effort", 5),
+                    )
+                    if hyp:
+                        created.append(hyp)
+                if created:
+                    self.attack_graph.add_hypotheses(created)
+                    self.console.print(f"[cyan]{len(created)} HTTP/2 desync hypotheses generated[/cyan]")
+            else:
+                self.console.print("[dim]Target does not support HTTP/2[/dim]")
+        except Exception as e:
+            self.console.print(f"[dim]H2 desync skipped: {e}[/dim]")
+
+    def _run_mcp_analysis(self, target: str) -> None:
+        """Discover and test MCP/AI endpoints."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+            js_content = ""
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_content = str(self.target_model.data["js_analysis"].get("raw_content", ""))
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = [ep.get("url", "") if isinstance(ep, dict) else str(ep) for ep in self.target_model.data["endpoints"][:30]]
+            ai_endpoints = self.mcp_tester.discover_ai_endpoints(url, js_content, endpoints)
+            if ai_endpoints:
+                self.console.print(f"[bold red]>>> {len(ai_endpoints)} AI/MCP endpoints discovered![/bold red]")
+                for ep in ai_endpoints[:3]:
+                    self.console.print(f"  [red]{ep.endpoint_type}: {ep.url}[/red]")
+            hyps = self.mcp_tester.generate_hypotheses(url, ai_endpoints, tech_stack)
+            created = []
+            for h in hyps:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url), technique=h.get("technique", "ai_attack"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 9), effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} AI/MCP hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]MCP analysis skipped: {e}[/dim]")
+
+    def _run_source_analysis(self, target: str) -> None:
+        """Analyze available source code for vulnerabilities."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+            framework = str(tech_stack.get("framework", "")).lower()
+            lang = "python" if any(f in framework for f in ["django", "flask", "fastapi"]) else \
+                   "ruby" if "rails" in framework else "javascript"
+            # Analyze source map content if available
+            js_content = ""
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_content = str(self.target_model.data["js_analysis"].get("raw_content", ""))
+            if js_content and len(js_content) > 100:
+                findings = self.source_analyzer.analyze_source(js_content, "js_bundle", lang)
+                routes = self.source_analyzer.extract_routes(js_content, "express" if lang == "javascript" else "flask")
+                unprotected = self.source_analyzer.find_unprotected_routes(routes)
+                if findings:
+                    self.console.print(f"[bold red]>>> {len(findings)} source code vulnerabilities found![/bold red]")
+                if unprotected:
+                    self.console.print(f"[bold red]>>> {len(unprotected)} unprotected routes found![/bold red]")
+                hyps = self.source_analyzer.generate_hypotheses(findings, routes, url)
+                created = []
+                for h in hyps:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", url), technique=h.get("technique", "source_vuln"),
+                        description=h.get("description", ""),
+                        novelty=h.get("novelty", 8), exploitability=h.get("exploitability", 8),
+                        impact=h.get("impact", 9), effort=h.get("effort", 3),
+                    )
+                    if hyp:
+                        created.append(hyp)
+                if created:
+                    self.attack_graph.add_hypotheses(created)
+                    self.console.print(f"[cyan]{len(created)} source-analysis hypotheses generated[/cyan]")
+            else:
+                self.console.print("[dim]No source code available for analysis[/dim]")
+        except Exception as e:
+            self.console.print(f"[dim]Source analysis skipped: {e}[/dim]")
 
     def _run_differential_hypotheses(self, target: str) -> None:
         """Generate differential testing hypotheses for IDOR/BOLA detection."""
