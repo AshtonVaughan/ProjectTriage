@@ -47,12 +47,14 @@ from context import ContextManager, Step
 from cost_tracker import CostTracker
 from coverage_asymmetry import CoverageAsymmetryDetector
 from db import Database
+from differential_engine import DifferentialEngine
 from disclosures import DisclosureLookup
 from dom_analyzer import DOMAnalyzer
 from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
 from fuzzer import SmartFuzzer
 from infra_scanner import InfraScanner
+from interactsh_client import InteractshClient
 from evidence import EvidenceCapture
 from hypothesis import Hypothesis, HypothesisEngine
 from intent_model import IntentModel
@@ -64,6 +66,7 @@ from memory import TargetMemory
 from parallel import parallel_recon
 from patterns import PatternsMemory
 from perceptor import Perceptor
+from program_intel import ProgramIntelligence
 from prompts import SYSTEM_PROMPT, REACT_TEMPLATE
 from provider import Provider, ReActResponse
 from quality_gate import QualityGate
@@ -143,6 +146,10 @@ class Agent:
         # Round 6 modules (fuzzing, supply chain)
         self.fuzzer = SmartFuzzer()
         self.supply_chain = SupplyChainAnalyzer()
+        # Critical gap modules (program intel, OOB callbacks, differential testing)
+        self.program_intel = ProgramIntelligence()
+        self.oob = InteractshClient()
+        self.differential = DifferentialEngine()
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -249,6 +256,18 @@ class Agent:
         # PHASE A: Intelligence Gathering
         # ============================================================
 
+        # Program intelligence - read scope, payouts, recent additions FIRST
+        self.console.print("\n[bold cyan]>>> Program Intelligence[/bold cyan]")
+        self._run_program_intel(target)
+
+        # Start OOB callback session for blind vulnerability confirmation
+        self.console.print("\n[bold cyan]>>> OOB Callback Session[/bold cyan]")
+        oob_session = self.oob.start_session()
+        if oob_session:
+            self.console.print(f"[cyan]OOB domain: {oob_session.base_domain}[/cyan]")
+        else:
+            self.console.print("[yellow]OOB callbacks unavailable - blind vulns will lack proof[/yellow]")
+
         # Source intelligence (GitHub, Wayback, CNAME, API specs)
         self.console.print("\n[bold cyan]>>> Source Intelligence[/bold cyan]")
         self._run_source_intel(target)
@@ -323,6 +342,10 @@ class Agent:
         # WebSocket endpoint discovery and hypothesis generation
         self.console.print("[bold cyan]>>> WebSocket Discovery[/bold cyan]")
         self._run_websocket_discovery(target)
+
+        # Differential testing hypotheses (IDOR/BOLA/BFLA)
+        self.console.print("[bold cyan]>>> Differential Testing (IDOR/BOLA)[/bold cyan]")
+        self._run_differential_hypotheses(target)
 
         # Smart fuzzer hypotheses
         self.console.print("[bold cyan]>>> Smart Fuzzer[/bold cyan]")
@@ -713,6 +736,12 @@ class Agent:
         try:
             self.mcts.merge_experiences()
             self.mcts._save_memory()
+        except Exception:
+            pass
+
+        # Stop OOB callback session
+        try:
+            self.oob.stop_session()
         except Exception:
             pass
 
@@ -1538,6 +1567,88 @@ class Agent:
                 self.console.print(f"[cyan]{len(created)} WebSocket hypotheses generated[/cyan]")
         except Exception as e:
             self.console.print(f"[dim]WebSocket discovery skipped: {e}[/dim]")
+
+    def _run_program_intel(self, target: str) -> None:
+        """Fetch and operationalize bug bounty program policy."""
+        try:
+            scope = self.program_intel.get_scope_for_target(target)
+            if scope.in_scope_assets:
+                self.console.print(
+                    f"[cyan]Program {scope.program_handle}: "
+                    f"{len(scope.in_scope_assets)} in-scope assets[/cyan]"
+                )
+
+            # Fresh targets (zero-competition window)
+            fresh = self.program_intel.get_fresh_targets(scope)
+            if fresh:
+                self.console.print(
+                    f"[bold red]>>> {len(fresh)} FRESH scope additions detected! "
+                    f"Zero-competition window.[/bold red]"
+                )
+
+            # Generate program-aware hypotheses
+            if self.hypothesis_engine and self.attack_graph:
+                hyp_dicts = self.program_intel.generate_hypotheses(
+                    scope,
+                    target if target.startswith("http") else f"https://{target}",
+                )
+                created = []
+                for h in hyp_dicts:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", target),
+                        technique=h.get("technique", "program_intel"),
+                        description=h.get("description", ""),
+                        novelty=h.get("novelty", 8),
+                        exploitability=h.get("exploitability", 7),
+                        impact=h.get("impact", 8),
+                        effort=h.get("effort", 2),
+                    )
+                    if hyp:
+                        created.append(hyp)
+                if created:
+                    self.attack_graph.add_hypotheses(created)
+                    self.console.print(f"[cyan]{len(created)} program-aware hypotheses generated[/cyan]")
+
+            # Inject scope context for LLM
+            scope_ctx = self.program_intel.format_scope_context(scope)
+            if scope_ctx and self.world:
+                self.world.set_tech("program_scope", scope_ctx)
+
+        except Exception as e:
+            self.console.print(f"[dim]Program intel skipped: {e}[/dim]")
+
+    def _run_differential_hypotheses(self, target: str) -> None:
+        """Generate differential testing hypotheses for IDOR/BOLA detection."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = [
+                    ep.get("url", "") if isinstance(ep, dict) else str(ep)
+                    for ep in self.target_model.data["endpoints"][:30]
+                ]
+
+            hyp_dicts = self.differential.generate_hypotheses(endpoints, url)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "differential"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 7),
+                    exploitability=h.get("exploitability", 9),
+                    impact=h.get("impact", 9),
+                    effort=h.get("effort", 2),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} differential testing hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Differential testing skipped: {e}[/dim]")
 
     def _run_fuzzer_hypotheses(self, target: str) -> None:
         """Generate smart fuzzing hypotheses."""
