@@ -46,6 +46,7 @@ from cost_tracker import CostTracker
 from coverage_asymmetry import CoverageAsymmetryDetector
 from db import Database
 from disclosures import DisclosureLookup
+from dom_analyzer import DOMAnalyzer
 from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
 from infra_scanner import InfraScanner
@@ -73,6 +74,7 @@ from target_model import TargetModel
 from tech_fingerprint import TechFingerprinter
 from tool_registry import ToolRegistry
 from validator import Validator
+from websocket_tester import WebSocketTester
 from workflow_tester import WorkflowTester
 from world_model import WorldModel
 from live_display import LiveDisplay, print_banner, print_finding_alert, print_hunt_complete
@@ -127,6 +129,9 @@ class Agent:
         self.infra_scanner = InfraScanner()
         self.osint_engine = OSINTEngine()
         self.chain_engine = ChainEngine()
+        # Round 4 modules (DOM, WebSocket, client-side)
+        self.dom_analyzer = DOMAnalyzer()
+        self.ws_tester = WebSocketTester()
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -286,6 +291,14 @@ class Agent:
         # Architectural anti-pattern detection (Orange Tsai methodology)
         self.console.print("[bold cyan]>>> Architectural Anti-Pattern Analysis[/bold cyan]")
         self._run_arch_analysis_hypotheses(target)
+
+        # DOM vulnerability hypotheses (DOM XSS, PP, postMessage, CSTI)
+        self.console.print("[bold cyan]>>> DOM Vulnerability Analysis[/bold cyan]")
+        self._run_dom_analysis(target)
+
+        # WebSocket endpoint discovery and hypothesis generation
+        self.console.print("[bold cyan]>>> WebSocket Discovery[/bold cyan]")
+        self._run_websocket_discovery(target)
 
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
@@ -1387,6 +1400,84 @@ class Agent:
                 )
         except Exception as e:
             self.console.print(f"[dim]Arch analysis skipped: {e}[/dim]")
+
+    def _run_dom_analysis(self, target: str) -> None:
+        """Generate DOM vulnerability hypotheses (XSS, PP, postMessage, CSTI)."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            hyp_dicts = self.dom_analyzer.generate_hypotheses(url, tech_stack)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "dom_vuln"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 7),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 7),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} DOM vulnerability hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]DOM analysis skipped: {e}[/dim]")
+
+    def _run_websocket_discovery(self, target: str) -> None:
+        """Discover WebSocket endpoints and generate security hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get JS content for WS endpoint extraction
+            js_content = ""
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_content = str(self.target_model.data["js_analysis"].get("raw_content", ""))
+
+            # Get known endpoints
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = [
+                    ep.get("url", "") if isinstance(ep, dict) else str(ep)
+                    for ep in self.target_model.data["endpoints"][:50]
+                ]
+
+            ws_endpoints = self.ws_tester.discover_ws_endpoints(url, js_content, endpoints)
+            if not ws_endpoints:
+                self.console.print("[dim]No WebSocket endpoints discovered[/dim]")
+                return
+
+            self.console.print(f"[cyan]Discovered {len(ws_endpoints)} WebSocket endpoints[/cyan]")
+            for ep in ws_endpoints[:3]:
+                self.console.print(f"  [dim]{ep.url} ({ep.protocol})[/dim]")
+
+            hyp_dicts = self.ws_tester.generate_hypotheses(url, ws_endpoints, tech_stack)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "ws_vuln"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 7),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} WebSocket hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]WebSocket discovery skipped: {e}[/dim]")
 
     def _generate_initial_hypotheses(self, target: str) -> None:
         """Generate initial hypotheses from recon data + patterns + defaults."""
