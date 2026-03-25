@@ -25,6 +25,7 @@ Architecture:
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -38,6 +39,7 @@ from arch_analyzer import ArchAnalyzer
 from assumption_engine import AssumptionEngine
 from attack_graph import AttackGraph
 from auth_context import AuthContext
+from campaign_manager import CampaignManager
 from chain_analyzer import ChainAnalyzer
 from chain_engine import ChainEngine
 from config import Config
@@ -49,6 +51,7 @@ from disclosures import DisclosureLookup
 from dom_analyzer import DOMAnalyzer
 from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
+from fuzzer import SmartFuzzer
 from infra_scanner import InfraScanner
 from evidence import EvidenceCapture
 from hypothesis import Hypothesis, HypothesisEngine
@@ -64,12 +67,14 @@ from perceptor import Perceptor
 from prompts import SYSTEM_PROMPT, REACT_TEMPLATE
 from provider import Provider, ReActResponse
 from quality_gate import QualityGate
+from report_generator import ReportGenerator
 from sanitizer import sanitize_action, sanitize_inputs
 from scope import Scope
 from self_reflect import SelfReflector
 from session import SessionRecorder
 from source_intel import SourceIntel
 from state_machine import StateMachineExtractor
+from supply_chain import SupplyChainAnalyzer
 from target_model import TargetModel
 from tech_fingerprint import TechFingerprinter
 from tool_registry import ToolRegistry
@@ -132,6 +137,12 @@ class Agent:
         # Round 4 modules (DOM, WebSocket, client-side)
         self.dom_analyzer = DOMAnalyzer()
         self.ws_tester = WebSocketTester()
+        # Round 5 modules (campaigns, reporting)
+        self.campaign_mgr = CampaignManager(config.data_dir)
+        self.report_gen = ReportGenerator()
+        # Round 6 modules (fuzzing, supply chain)
+        self.fuzzer = SmartFuzzer()
+        self.supply_chain = SupplyChainAnalyzer()
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -205,6 +216,19 @@ class Agent:
             model=self.provider.model,
         )
         hunt_number = self.memory.get_hunt_count() + 1
+
+        # Campaign management - resume or create
+        campaign = self.campaign_mgr.find_campaign_for_target(target)
+        if not campaign:
+            campaign = self.campaign_mgr.create_campaign(target)
+            self.console.print(f"[cyan]New campaign created: {campaign.campaign_id}[/cyan]")
+        else:
+            self.console.print(
+                f"[cyan]Resuming campaign {campaign.campaign_id} "
+                f"(session #{campaign.session_count + 1}, "
+                f"{campaign.findings_count} prior findings)[/cyan]"
+            )
+        self.campaign_mgr.start_session(campaign)
 
         # Display hunt banner (beautiful startup screen)
         print_banner(
@@ -299,6 +323,14 @@ class Agent:
         # WebSocket endpoint discovery and hypothesis generation
         self.console.print("[bold cyan]>>> WebSocket Discovery[/bold cyan]")
         self._run_websocket_discovery(target)
+
+        # Smart fuzzer hypotheses
+        self.console.print("[bold cyan]>>> Smart Fuzzer[/bold cyan]")
+        self._run_fuzzer_hypotheses(target)
+
+        # Supply chain analysis
+        self.console.print("[bold cyan]>>> Supply Chain Analysis[/bold cyan]")
+        self._run_supply_chain_analysis(target)
 
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
@@ -681,6 +713,34 @@ class Agent:
         try:
             self.mcts.merge_experiences()
             self.mcts._save_memory()
+        except Exception:
+            pass
+
+        # End campaign session
+        try:
+            self.campaign_mgr.end_session(
+                campaign,
+                steps=self.attack_graph.total_steps,
+                findings_count=self.attack_graph.findings_count,
+            )
+        except Exception:
+            pass
+
+        # Auto-generate reports for verified findings
+        try:
+            findings_for_report = self.world.get_findings_for_chain_analysis() if self.world else []
+            if findings_for_report:
+                reports = self.report_gen.generate_batch(findings_for_report)
+                report_dir = os.path.join(self.config.findings_dir, "reports")
+                os.makedirs(report_dir, exist_ok=True)
+                for i, report in enumerate(reports):
+                    report_path = os.path.join(report_dir, f"report_{i+1}_{report.severity}.md")
+                    with open(report_path, "w") as f:
+                        f.write(report.markdown)
+                if reports:
+                    self.console.print(
+                        f"[bold green]{len(reports)} reports auto-generated in {report_dir}[/bold green]"
+                    )
         except Exception:
             pass
 
@@ -1478,6 +1538,67 @@ class Agent:
                 self.console.print(f"[cyan]{len(created)} WebSocket hypotheses generated[/cyan]")
         except Exception as e:
             self.console.print(f"[dim]WebSocket discovery skipped: {e}[/dim]")
+
+    def _run_fuzzer_hypotheses(self, target: str) -> None:
+        """Generate smart fuzzing hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = [
+                    ep.get("url", "") if isinstance(ep, dict) else str(ep)
+                    for ep in self.target_model.data["endpoints"][:20]
+                ]
+
+            hyp_dicts = self.fuzzer.generate_hypotheses(url, endpoints)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "fuzz"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 6),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 7),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} fuzzing hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Fuzzer skipped: {e}[/dim]")
+
+    def _run_supply_chain_analysis(self, target: str) -> None:
+        """Generate supply chain vulnerability hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            hyp_dicts = self.supply_chain.generate_hypotheses(url, tech_stack)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "supply_chain"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 6),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 2),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} supply chain hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Supply chain analysis skipped: {e}[/dim]")
 
     def _generate_initial_hypotheses(self, target: str) -> None:
         """Generate initial hypotheses from recon data + patterns + defaults."""
