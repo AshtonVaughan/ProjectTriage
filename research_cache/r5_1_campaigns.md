@@ -304,7 +304,7 @@ class EvidenceCapture:
         har = {
             "log": {
                 "version": "1.2",
-                "creator": {"name": "NPUHacker", "version": "1.0"},
+                "creator": {"name": "Project Triage", "version": "1.0"},
                 "entries": self.har_entries
             }
         }

@@ -3,7 +3,7 @@ set -e
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC='\033[0m'
 VRAM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "0")
 GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
-echo -e "${CYAN}============================================="; echo "  Project Triage v3 - Server Setup"; echo "  GPU: ${GPU}"; echo "  VRAM: ${VRAM} MB"; echo "=============================================${NC}"; echo ""
+echo -e "${CYAN}============================================="; echo "  Project Triage v4 - Server Setup"; echo "  GPU: ${GPU}"; echo "  VRAM: ${VRAM} MB"; echo "=============================================${NC}"; echo ""
 
 echo -e "${YELLOW}[1/6] System packages...${NC}"
 apt-get update -qq 2>/dev/null; apt-get install -y -qq curl wget git python3-pip python3-venv nmap jq dnsutils net-tools 2>/dev/null

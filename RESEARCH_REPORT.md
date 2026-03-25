@@ -1,8 +1,8 @@
-# NPUHacker v2: Deep Research Intelligence Report & Brain Improvement Plan
+# Project Triage v4: Deep Research Intelligence Report & Brain Improvement Plan
 
 ## Bottom Line Up Front
 
-NPUHacker's current architecture - a linear 5-phase pipeline with ToolRAG and ReAct - is a solid foundation but operates at roughly 20-30% of the attack surface that elite human testers cover. The three critical architectural gaps are: (1) the linear phase model prevents the hypothesis-driven graph traversal that produces high-value findings, (2) there is no persistent world model / attack graph that survives across steps, causing state loss and redundant loops, and (3) the attack surface coverage is limited to port scanning + template CVEs, missing the entire authorization/logic/chain layer where the biggest bounties live. The research is unambiguous: **separating planning from execution, building an external attack state graph, and shifting to hypothesis-driven testing** are the three changes that would produce the largest capability jump.
+Project Triage's current architecture - a linear 5-phase pipeline with ToolRAG and ReAct - is a solid foundation but operates at roughly 20-30% of the attack surface that elite human testers cover. The three critical architectural gaps are: (1) the linear phase model prevents the hypothesis-driven graph traversal that produces high-value findings, (2) there is no persistent world model / attack graph that survives across steps, causing state loss and redundant loops, and (3) the attack surface coverage is limited to port scanning + template CVEs, missing the entire authorization/logic/chain layer where the biggest bounties live. The research is unambiguous: **separating planning from execution, building an external attack state graph, and shifting to hypothesis-driven testing** are the three changes that would produce the largest capability jump.
 
 ---
 
@@ -34,25 +34,25 @@ The dominant finding: **classical planning + LLM execution > pure LLM reasoning*
 
 ---
 
-## The Gaps (NPUHacker-Specific)
+## The Gaps (Project Triage-Specific)
 
 ### Gap 1: "The Linear Phase Trap"
-NPUHacker enforces Recon -> Discovery -> Vuln Scan -> Exploitation -> Validation. Elite testers work as hypothesis-driven graph traversals: rapid heat-map -> crown jewels identification -> iterative hypothesis-test-pivot loops that feed back into recon at any point. Recon never "finishes." The 100-Hour Rule, heat mapping, and crown jewels targeting are all non-linear strategies. NPUHacker's planner forces the agent through phases even when a finding in phase 3 should trigger new recon.
+Project Triage enforces Recon -> Discovery -> Vuln Scan -> Exploitation -> Validation. Elite testers work as hypothesis-driven graph traversals: rapid heat-map -> crown jewels identification -> iterative hypothesis-test-pivot loops that feed back into recon at any point. Recon never "finishes." The 100-Hour Rule, heat mapping, and crown jewels targeting are all non-linear strategies. Project Triage's planner forces the agent through phases even when a finding in phase 3 should trigger new recon.
 
 ### Gap 2: "The Amnesiac Agent"
-Every long-horizon failure in AI pentesting traces to state loss. NPUHacker's context manager uses a sliding window of compressed step summaries - but has no structured world model. It cannot answer: "What services have I confirmed running? What credentials do I have? What attack paths remain untested?" The CheckMate architecture solves this with an external predicate database. NPUHacker has the hypothesis engine and target model, but they're disconnected from the agent loop's decision-making.
+Every long-horizon failure in AI pentesting traces to state loss. Project Triage's context manager uses a sliding window of compressed step summaries - but has no structured world model. It cannot answer: "What services have I confirmed running? What credentials do I have? What attack paths remain untested?" The CheckMate architecture solves this with an external predicate database. Project Triage has the hypothesis engine and target model, but they're disconnected from the agent loop's decision-making.
 
 ### Gap 3: "The Scanner Ceiling"
-NPUHacker wraps nmap, subfinder, httpx, nuclei, sqlmap, curl. This covers template CVE detection and basic recon. It cannot test: race conditions, business logic abuse, OAuth flow manipulation, JWT algorithm confusion, GraphQL resolver authorization, cache poisoning, HTTP desync, IDOR across role boundaries, or any attack requiring multi-request coordination. These are the categories producing the highest bounties.
+Project Triage wraps nmap, subfinder, httpx, nuclei, sqlmap, curl. This covers template CVE detection and basic recon. It cannot test: race conditions, business logic abuse, OAuth flow manipulation, JWT algorithm confusion, GraphQL resolver authorization, cache poisoning, HTTP desync, IDOR across role boundaries, or any attack requiring multi-request coordination. These are the categories producing the highest bounties.
 
 ### Gap 4: "The Single-Finding Trap"
-NPUHacker reports individual findings but has no chain analysis. The highest-value discoveries are chains: SSRF + IMDS + IAM escalation = cloud takeover. Low XSS + cache poisoning = mass compromise. IDOR + data export = critical data breach. No current module reasons about combining findings.
+Project Triage reports individual findings but has no chain analysis. The highest-value discoveries are chains: SSRF + IMDS + IAM escalation = cloud takeover. Low XSS + cache poisoning = mass compromise. IDOR + data export = critical data breach. No current module reasons about combining findings.
 
 ### Gap 5: "Missing Authorization Model"
-The highest-value web finding categories (IDOR, OAuth logic, JWT role manipulation, GraphQL resolver gaps, 2FA bypass) all look syntactically normal to scanners. The vulnerability is in whether the server correctly evaluates "should this principal do this action on this resource." NPUHacker has no concept of roles, sessions, or authorization boundaries.
+The highest-value web finding categories (IDOR, OAuth logic, JWT role manipulation, GraphQL resolver gaps, 2FA bypass) all look syntactically normal to scanners. The vulnerability is in whether the server correctly evaluates "should this principal do this action on this resource." Project Triage has no concept of roles, sessions, or authorization boundaries.
 
 ### Gap 6: "No Abandonment Heuristic"
-Elite CTF teams time-box at 45-60 minutes. Top bounty hunters apply the 100-Hour Rule. NPUHacker has auto-advance after N steps but no strategic reasoning about whether to continue, pivot, or abandon a target entirely.
+Elite CTF teams time-box at 45-60 minutes. Top bounty hunters apply the 100-Hour Rule. Project Triage has auto-advance after N steps but no strategic reasoning about whether to continue, pivot, or abandon a target entirely.
 
 ---
 
@@ -83,7 +83,7 @@ Elite CTF teams time-box at 45-60 minutes. Top bounty hunters apply the 100-Hour
 
 ---
 
-## So What: The NPUHacker v3 Brain Improvement Plan
+## So What: The Project Triage v4 Brain Improvement Plan
 
 ### Architecture Changes (Priority Order)
 
@@ -214,7 +214,7 @@ Implementation:
 Based on CheckMate and CIPHER research:
 - Use a larger/smarter model (or classical planner) for: hypothesis generation, chain analysis, pivot decisions, attack graph updates
 - Use the fast local model for: tool command generation, output parsing, observation compression
-- This matches how NPUHacker already has `fast_model` support in `provider.py` - extend it to route planning vs execution tasks explicitly
+- This matches how Project Triage already has `fast_model` support in `provider.py` - extend it to route planning vs execution tasks explicitly
 
 ---
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Project Triage v3 - vast.ai / GPU Server Setup Script
+# Project Triage v4 - vast.ai / GPU Server Setup Script
 # RTX PRO 6000 Blackwell (96GB VRAM) configuration
 # =============================================================================
 #
@@ -15,7 +15,7 @@
 set -e
 
 echo "============================================="
-echo "  Project Triage v3 - Server Setup"
+echo "  Project Triage v4 - Server Setup"
 echo "  GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'detecting...')"
 echo "  VRAM: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null || echo 'detecting...')"
 echo "============================================="
@@ -126,7 +126,7 @@ echo "[5/5] Creating run script..."
 
 cat > /root/run_hunt.sh << 'RUNEOF'
 #!/bin/bash
-# Project Triage v3 - Run a hunt with dual-model architecture
+# Project Triage v4 - Run a hunt with dual-model architecture
 # Usage: bash run_hunt.sh <target>
 
 TARGET="${1:?Usage: bash run_hunt.sh <target_domain>}"

@@ -1,5 +1,5 @@
 # R4.2 - WebSocket and Real-Time Protocol Vulnerability Testing
-## Research Cache - Project Triage / NPUHacker
+## Research Cache - Project Triage / Project Triage
 
 **Date:** 2026-03-25
 **Scope:** WebSocket, GraphQL Subscriptions, SSE, gRPC-Web, Socket.IO, Race Conditions via real-time channels

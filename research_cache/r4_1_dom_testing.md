@@ -731,7 +731,7 @@ async def test_dom_clobbering(url: str, html_injection_param: str) -> list[dict]
 
 ---
 
-## 8. Implementation Architecture for NPUHacker
+## 8. Implementation Architecture for Project Triage
 
 ### 8.1 DOMProbe Module Design
 
