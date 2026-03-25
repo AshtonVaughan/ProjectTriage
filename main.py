@@ -29,6 +29,11 @@ from tools.register_new import (
     register_cors_tools, register_crlf_tools, register_ssti_tools,
     register_proto_pollution_tools,
 )
+from tools.register_discovery import register_discovery_tools
+from tools.saml import register_saml_tools
+from tools.oauth import register_oauth_tools
+from tools.llm_attacks import register_llm_attack_tools
+from tools.dns_rebind import register_dns_rebind_tools
 from agent import Agent
 
 
@@ -75,6 +80,21 @@ def build_registry(config: Config) -> ToolRegistry:
     for tool in register_ssti_tools(config):
         registry.register(tool)
     for tool in register_proto_pollution_tools(config):
+        registry.register(tool)
+    # Go-based discovery tools (katana, gau, waybackurls, feroxbuster, kiterunner, arjun, gowitness, fingerprintx)
+    for tool in register_discovery_tools(config):
+        registry.register(tool)
+    # SAML SSO attack tools
+    for tool in register_saml_tools(config):
+        registry.register(tool)
+    # OAuth/OIDC flow attack tools
+    for tool in register_oauth_tools(config):
+        registry.register(tool)
+    # LLM/AI agent attack tools (beyond basic prompt injection)
+    for tool in register_llm_attack_tools(config):
+        registry.register(tool)
+    # DNS rebinding SSRF bypass tools
+    for tool in register_dns_rebind_tools(config):
         registry.register(tool)
     return registry
 

@@ -91,6 +91,15 @@ from websocket_tester import WebSocketTester
 from workflow_tester import WorkflowTester
 from world_model import WorldModel
 from live_display import LiveDisplay, print_banner, print_finding_alert, print_hunt_complete
+# New modules from gap analysis
+from confusion_engine import ConfusionEngine
+from client_analyzer import ClientAnalyzer
+from idor_engine import IDOREngine
+from procedural_memory import ProceduralMemory
+from lats_explorer import LATSExplorer
+from curriculum import CurriculumManager
+from escalation_router import EscalationRouter
+from data_manager import DataManager
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
@@ -161,6 +170,15 @@ class Agent:
         self.mcp_tester = MCPTester()
         self.monitor = MonitorMode(config.data_dir)
         self.source_analyzer = SourceAnalyzer()
+        # New modules from deep research gap analysis
+        self.confusion_engine = ConfusionEngine()
+        self.client_deep = ClientAnalyzer()
+        self.idor_engine = IDOREngine()
+        self.procedural_memory = ProceduralMemory(config.data_dir)
+        self.lats = LATSExplorer(provider, config.data_dir)
+        self.curriculum = CurriculumManager(config.data_dir)
+        self.escalation = EscalationRouter(provider, config)
+        self.data_mgr = DataManager(config.data_dir)
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -381,6 +399,26 @@ class Agent:
         # Supply chain analysis
         self.console.print("[bold cyan]>>> Supply Chain Analysis[/bold cyan]")
         self._run_supply_chain_analysis(target)
+
+        # Confusion attack analysis (Orange Tsai 2024 methodology)
+        self.console.print("[bold cyan]>>> Confusion Attack Analysis[/bold cyan]")
+        self._run_confusion_analysis(target)
+
+        # Deep client-side analysis (postMessage, CSWSH, DOM clobbering, prototype pollution)
+        self.console.print("[bold cyan]>>> Deep Client-Side Analysis[/bold cyan]")
+        self._run_client_deep_analysis(target)
+
+        # IDOR/BOLA systematic testing
+        self.console.print("[bold cyan]>>> IDOR/BOLA Engine[/bold cyan]")
+        self._run_idor_analysis(target)
+
+        # Procedural memory - apply learned skills from previous sessions
+        self.console.print("[bold cyan]>>> Procedural Memory (Learned Skills)[/bold cyan]")
+        self._run_procedural_memory(target)
+
+        # Curriculum-guided hypothesis ordering
+        self.console.print("[bold cyan]>>> Curriculum Learning[/bold cyan]")
+        self._run_curriculum_analysis(target)
 
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
@@ -1248,6 +1286,191 @@ class Agent:
                 self.console.print(f"[cyan]{len(created)} edge-analysis hypotheses generated[/cyan]")
         except Exception as e:
             self.console.print(f"[dim]Edge analysis skipped: {e}[/dim]")
+
+    def _run_confusion_analysis(self, target: str) -> None:
+        """Generate hypotheses for confusion attacks (Orange Tsai 2024 methodology)."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = self.target_model.data["endpoints"]
+
+            hyp_dicts = self.confusion_engine.generate_confusion_hypotheses(
+                url, tech_stack, endpoints
+            )
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "confusion_attack"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 9),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 9),
+                    effort=h.get("effort", 4),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} confusion-attack hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Confusion analysis skipped: {e}[/dim]")
+
+    def _run_client_deep_analysis(self, target: str) -> None:
+        """Generate hypotheses for deep client-side attacks (postMessage, CSWSH, DOM clobbering)."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get JS content from target model if available
+            js_content = ""
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_data = self.target_model.data["js_analysis"]
+                js_content = str(js_data.get("raw_content", ""))[:50000]
+
+            hyp_dicts = self.client_deep.generate_client_hypotheses(url, js_content, tech_stack)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "client_side"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 8),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 4),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} client-side hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Client-side analysis skipped: {e}[/dim]")
+
+    def _run_idor_analysis(self, target: str) -> None:
+        """Generate systematic IDOR/BOLA test hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = self.target_model.data["endpoints"]
+
+            auth_context = {}
+            if self.auth_context:
+                auth_context = {
+                    "roles": self.auth_context.get_roles(),
+                    "tokens": self.auth_context.get_token_summary(),
+                }
+
+            # Generate IDOR tests
+            idor_tests = self.idor_engine.generate_idor_tests(endpoints, auth_context)
+            bola_tests = self.idor_engine.generate_bola_tests(endpoints, tech_stack)
+            all_tests = idor_tests + bola_tests
+
+            hyp_dicts = self.idor_engine.idor_to_hypotheses(all_tests)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "idor"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 7),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 9),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} IDOR/BOLA hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]IDOR analysis skipped: {e}[/dim]")
+
+    def _run_procedural_memory(self, target: str) -> None:
+        """Apply learned skills from previous sessions to generate hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            tech_stack = self.world.tech_stack if self.world else {}
+            url = target if target.startswith("http") else f"https://{target}"
+
+            applicable_skills = self.procedural_memory.find_applicable_skills(tech_stack, url)
+            if not applicable_skills:
+                self.console.print("[dim]No applicable procedural skills for this tech stack[/dim]")
+                return
+
+            hyp_dicts = self.procedural_memory.get_skill_hypotheses(applicable_skills, target)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "procedural_skill"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 6),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 2),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(
+                    f"[cyan]{len(created)} procedural skill hypotheses "
+                    f"(from {len(applicable_skills)} learned skills)[/cyan]"
+                )
+        except Exception as e:
+            self.console.print(f"[dim]Procedural memory skipped: {e}[/dim]")
+
+    def _run_curriculum_analysis(self, target: str) -> None:
+        """Apply curriculum learning to order hypotheses by difficulty progression."""
+        if not self.attack_graph:
+            return
+        try:
+            tech_stack = self.world.tech_stack if self.world else {}
+            waf = tech_stack.get("waf", "unknown")
+            auth_type = tech_stack.get("auth", "unknown")
+
+            profile = self.curriculum.assess_target_difficulty(tech_stack, waf, auth_type)
+            self.console.print(
+                f"[cyan]Target difficulty: {profile.name} (level {profile.level}/10)[/cyan]"
+            )
+
+            # Get curriculum-ordered hypotheses
+            hyp_dicts = self.curriculum.get_curriculum_hypotheses(
+                profile.level, tech_stack
+            )
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", target),
+                    technique=h.get("technique", "curriculum"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 5),
+                    exploitability=h.get("exploitability", 6),
+                    impact=h.get("impact", 7),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(
+                    f"[cyan]{len(created)} curriculum-guided hypotheses generated[/cyan]"
+                )
+        except Exception as e:
+            self.console.print(f"[dim]Curriculum analysis skipped: {e}[/dim]")
 
     def _run_osint_deep(self, target: str) -> None:
         """Run deep OSINT: cloud assets, staging envs, source maps, JS secrets."""

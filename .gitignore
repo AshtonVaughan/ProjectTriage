@@ -9,5 +9,7 @@ dist/
 build/
 .mypy_cache/
 data/
+!data/wordlists/
+!data/wordlists/tech_routes.json
 findings/
 output/
