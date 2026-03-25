@@ -23,12 +23,12 @@ echo "============================================="
 # ---------------------------------------------------------------------------
 # 1. System packages + security tools
 # ---------------------------------------------------------------------------
-echo "[1/5] Installing system packages and security tools..."
+echo "[1/6] Installing system packages and security tools..."
 apt-get update -qq
 apt-get install -y -qq \
     curl wget git python3 python3-pip python3-venv \
     nmap \
-    jq dnsutils net-tools
+    jq dnsutils net-tools docker.io
 
 # Install Go tools (subfinder, httpx, nuclei)
 echo "Installing Go security tools..."
@@ -60,10 +60,27 @@ for tool in nmap subfinder httpx nuclei sqlmap curl; do
 done
 
 # ---------------------------------------------------------------------------
-# 2. Install Ollama
+# 2. Python packages + Playwright
 # ---------------------------------------------------------------------------
 echo ""
-echo "[2/5] Installing Ollama..."
+echo "[2/6] Installing Python packages..."
+pip3 install -q openai rich numpy playwright ddgs
+playwright install chromium
+playwright install-deps
+
+# ---------------------------------------------------------------------------
+# 3. SearXNG
+# ---------------------------------------------------------------------------
+echo ""
+echo "[3/6] Starting SearXNG..."
+docker run -d --name searxng -p 8888:8080 --restart unless-stopped searxng/searxng 2>/dev/null || true
+echo "  SearXNG available at http://localhost:8888"
+
+# ---------------------------------------------------------------------------
+# 4. Install Ollama
+# ---------------------------------------------------------------------------
+echo ""
+echo "[4/6] Installing Ollama..."
 if ! command -v ollama &>/dev/null; then
     curl -fsSL https://ollama.com/install.sh | sh
 fi
@@ -74,76 +91,81 @@ ollama serve &>/dev/null &
 sleep 3
 
 # ---------------------------------------------------------------------------
-# 3. Pull recommended models for 96GB VRAM
+# 5. Pull abliterated models + create triage-security
 # ---------------------------------------------------------------------------
 echo ""
-echo "[3/5] Pulling models for 96GB VRAM..."
+echo "[5/6] Pulling models for 96GB VRAM..."
 echo ""
 
-# PLANNING MODEL: Qwen 3.5 32B (best reasoning at this size, 262K context)
-echo "Pulling planning model: qwen3.5:32b (~20GB)..."
-ollama pull qwen3.5:32b
+# PLANNING MODEL: abliterated Qwen3 32B (uncensored, best reasoning at this size)
+echo "Pulling planning model: huihui_ai/qwen3-abliterated:32b (~20GB)..."
+ollama pull huihui_ai/qwen3-abliterated:32b
 
-# EXECUTION MODEL: Qwen 3.5 4B (fast, good tool calling)
-echo "Pulling execution model: qwen3.5:4b (~3GB)..."
-ollama pull qwen3.5:4b
+# EXECUTION MODEL: abliterated Qwen3 4B (fast, good tool calling)
+echo "Pulling execution model: huihui_ai/qwen3-abliterated:4b (~3GB)..."
+ollama pull huihui_ai/qwen3-abliterated:4b
 
 # EMBEDDING MODEL: nomic-embed-text (fast, low resource)
 echo "Pulling embedding model: nomic-embed-text (~270MB)..."
 ollama pull nomic-embed-text
+
+# Create custom triage-security model from Modelfile
+echo ""
+echo "Creating triage-security model from Modelfile..."
+ollama create triage-security -f /root/ProjectTriage/Modelfile
 
 echo ""
 echo "Models pulled:"
 ollama list
 
 # ---------------------------------------------------------------------------
-# 4. Clone and setup Project Triage
+# 6. Setup Project Triage + run script
 # ---------------------------------------------------------------------------
 echo ""
-echo "[4/5] Setting up Project Triage..."
+echo "[6/6] Setting up Project Triage..."
 cd /root
 
-if [ ! -d "Project Triage" ]; then
-    echo "Creating Project Triage directory..."
-    mkdir -p Project Triage
+if [ ! -d "ProjectTriage" ]; then
+    echo "Creating ProjectTriage directory..."
+    mkdir -p ProjectTriage
     echo "(Upload your Project Triage files here)"
 fi
 
-cd Project Triage
+cd ProjectTriage
 
 # Create venv and install deps
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
 fi
 source .venv/bin/activate
-pip install -q openai rich numpy
+pip install -q openai rich numpy playwright ddgs
+playwright install chromium
+playwright install-deps
 
-# ---------------------------------------------------------------------------
-# 5. Create run script
-# ---------------------------------------------------------------------------
+# Verify imports
 echo ""
-echo "[5/5] Creating run script..."
+echo "Verifying Project Triage installation..."
+python3 -c "from core.agent import Agent; from main import build_registry" 2>/dev/null && echo "  [OK] Project Triage imports" || echo "  [--] Project Triage imports failed (check package structure)"
 
 cat > /root/run_hunt.sh << 'RUNEOF'
 #!/bin/bash
-# Project Triage v4 - Run a hunt with dual-model architecture
+# Project Triage v4 - Run a hunt with triage-security model
 # Usage: bash run_hunt.sh <target>
 
 TARGET="${1:?Usage: bash run_hunt.sh <target_domain>}"
 
-cd /root/Project Triage
+cd /root/ProjectTriage
 source .venv/bin/activate
 
-# Dual-model configuration:
-#   Planning model: qwen3.5:32b (reasoning, hypothesis generation, chain analysis)
-#   Execution model: qwen3.5:4b (tool commands, compression, observation parsing)
+# Model configuration:
+#   Planning model:  triage-security (abliterated Qwen3, uncensored for security research)
 #   Embedding model: nomic-embed-text (ToolRAG retrieval)
 
 python3 main.py \
     --target "$TARGET" \
     --provider ollama \
-    --model "qwen3.5:32b" \
-    --fast-model "qwen3.5:4b" \
+    --model "triage-security" \
+    --fast-model "triage-security" \
     --embed-model "nomic-embed-text" \
     --max-steps 20 \
     --ctx-tokens 32768
@@ -157,16 +179,18 @@ echo "  SETUP COMPLETE"
 echo "============================================="
 echo ""
 echo "Models loaded:"
-echo "  Planning:  qwen3.5:32b  (32B, 262K context, best reasoning)"
-echo "  Execution: qwen3.5:4b   (4B, fast tool calling)"
+echo "  Planning:  triage-security  (abliterated Qwen3, uncensored)"
+echo "  Execution: triage-security  (same model)"
 echo "  Embedding: nomic-embed-text (ToolRAG)"
+echo ""
+echo "SearXNG: http://localhost:8888"
 echo ""
 echo "To run a hunt:"
 echo "  bash /root/run_hunt.sh <target_domain>"
 echo ""
 echo "Or manually:"
-echo "  cd /root/Project Triage && source .venv/bin/activate"
-echo "  python3 main.py -t example.com --model qwen3.5:32b --fast-model qwen3.5:4b"
+echo "  cd /root/ProjectTriage && source .venv/bin/activate"
+echo "  python3 main.py -t example.com --model triage-security --fast-model triage-security"
 echo ""
 echo "GPU Status:"
 nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader

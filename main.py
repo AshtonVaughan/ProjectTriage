@@ -34,6 +34,9 @@ from tools.saml import register_saml_tools
 from tools.oauth import register_oauth_tools
 from tools.llm_attacks import register_llm_attack_tools
 from tools.dns_rebind import register_dns_rebind_tools
+from tools.web_search import register_web_search_tools
+from tools.fetch_page import register_fetch_tools
+from tools.browser import register_browser_tools
 from core.agent import Agent
 
 
@@ -87,6 +90,13 @@ def build_registry(config: Config) -> ToolRegistry:
     for tool in register_llm_attack_tools(config):
         registry.register(tool)
     for tool in register_dns_rebind_tools(config):
+        registry.register(tool)
+    # Web search, page fetching, and browser automation
+    for tool in register_web_search_tools(config):
+        registry.register(tool)
+    for tool in register_fetch_tools(config):
+        registry.register(tool)
+    for tool in register_browser_tools(config):
         registry.register(tool)
     return registry
 
