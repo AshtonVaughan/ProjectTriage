@@ -56,11 +56,13 @@ pip install openai rich numpy
 # Start any local LLM
 ollama serve
 
-# Run
-python main.py -t target.com -m qwen3:32b
+# Run (launches interactive TUI - no args needed)
+python main.py
 ```
 
-That's the minimum. Read on for the full installation guide.
+That's it. The TUI walks you through provider detection, model selection, dual-model setup, hunt intensity, and target input. Your config saves automatically for next time.
+
+For scripting/automation, CLI args still work: `python main.py -t target.com -m qwen3:32b`
 
 ---
 
@@ -254,19 +256,52 @@ python main.py --scan-providers
 ### Step 5: Run
 
 ```bash
-# Basic
+# Launch the interactive TUI (recommended - just run it)
+python main.py
+```
+
+The TUI guides you through everything:
+
+```
++-----------------------------------------------+
+|            Project Triage v4                    |
+|  Autonomous Hypothesis-Driven Pentesting Agent  |
++-----------------------------------------------+
+
+Main Menu:
+ > Quick Hunt: target.com (qwen3:32b)   <-- re-run last hunt (one keypress)
+   New Hunt                              <-- full guided setup
+   Saved Profiles (3)                    <-- load a saved config
+   Scan Providers                        <-- detect running LLMs
+   Browse Models                         <-- curated model database
+   Settings                              <-- all configuration options
+   Exit
+```
+
+**New Hunt** walks through 6 steps:
+1. **Provider** - auto-scans for Ollama/vLLM/LMStudio, shows available models
+2. **Dual-Model** - single model, auto (qwen3:4b fast), or custom fast+embed
+3. **Intensity** - Quick (5 steps), Standard (15), Thorough (30), Deep (50)
+4. **Context** - 8K to 128K tokens
+5. **Target** - enter URL or domain
+6. **Confirm** - review and optionally save as a named profile
+
+**Saved Profiles** persist to `data/saved_profiles.json`. Save a hunt config once, reload it with one keypress forever. Last-used config auto-saves for Quick Hunt.
+
+**Settings** lets you configure everything without CLI flags:
+- Max steps per phase and context window
+- Fast model and embedding model (dual-model mode)
+- Frontier API key, model, and URL (optional escalation)
+
+For scripting and automation, CLI args still work:
+```bash
+# CLI mode (bypasses TUI)
 python main.py -t target.com -m qwen3:32b
 
-# Dual-model mode (recommended - big model thinks, small model executes)
-python main.py -t target.com \
-    -m qwen3:32b \
-    --fast-model qwen3:4b \
-    --embed-model nomic-embed-text \
-    --max-steps 20 \
-    --ctx-tokens 32768
-
-# Interactive TUI (no args)
-python main.py
+# Full CLI with dual-model
+python main.py -t target.com -m qwen3:32b \
+    --fast-model qwen3:4b --embed-model nomic-embed-text \
+    --max-steps 20 --ctx-tokens 32768
 ```
 
 ---
@@ -561,26 +596,219 @@ After every finding, the chain analyzer checks if findings combine into somethin
 
 | VRAM | Planning Model | Fast Model | Experience |
 |---|---|---|---|
-| **80GB+** (H100, B200) | `qwen3:235b` | `qwen3:4b` | Frontier reasoning |
-| **48GB** (2x 4090, A6000) | `qwen3:32b` | `qwen3:4b` | Near-frontier |
+| **192GB** (B200) | `qwen3:235b` | `qwen3:4b` | Maximum capability |
+| **80GB** (H100 SXM, A100) | `qwen3:235b` | `qwen3:4b` | Frontier reasoning |
+| **48GB** (2x 4090, A6000, RTX 6000) | `qwen3:32b` | `qwen3:4b` | Near-frontier |
 | **24GB** (4090, 3090) | `qwen3:14b` | `qwen3:4b` | Solid reasoning |
 | **16GB** (4080, 4070Ti) | `qwen3:8b` | `qwen3:4b` | Basic reasoning |
 | **8GB** (4070, 3070) | `qwen3:4b` | - | Minimum viable |
 
-### Cloud GPU Quick Deploy
+### Cloud GPU Providers
+
+Rent a GPU by the hour. No commitments. SSH in, run setup, hunt.
+
+<details>
+<summary><b>vast.ai (cheapest, biggest selection)</b></summary>
 
 ```bash
-# vast.ai / RunPod / Lambda Labs
-# 1. Rent a GPU instance (H100 recommended)
-# 2. SSH in and clone
+# 1. Go to vast.ai, filter for:
+#    - GPU: H100 SXM or A100 80GB
+#    - Image: pytorch/pytorch:latest or ubuntu:22.04
+#    - Disk: 250GB+
+#    - Cost: ~$1.50-2.50/hr for H100
+
+# 2. Click "Rent" and wait for instance to start
+
+# 3. SSH into your instance (vast.ai shows the SSH command)
+ssh -p <port> root@<ip>
+
+# 4. Full setup (one command - installs everything)
+apt update && apt install -y git curl python3-pip python3-venv nmap && \
+curl -fsSL https://ollama.com/install.sh | sh && \
+git clone https://github.com/AshtonVaughan/ProjectTriage.git && \
+cd ProjectTriage && \
+python3 -m venv .venv && source .venv/bin/activate && \
+pip install openai rich numpy
+
+# 5. Pull models (auto-detects VRAM)
+ollama serve &
+sleep 5
+# H100 80GB:
+ollama pull qwen3:235b && ollama pull qwen3:4b
+# A100 40GB:
+# ollama pull qwen3:32b && ollama pull qwen3:4b
+
+# 6. Run (TUI handles everything)
+python main.py
+```
+</details>
+
+<details>
+<summary><b>RunPod (easy UI, good for beginners)</b></summary>
+
+```bash
+# 1. Go to runpod.io, click "GPU Cloud"
+#    - Select: A100 80GB ($1.64/hr) or H100 ($2.49/hr)
+#    - Template: RunPod Pytorch 2.x
+#    - Volume: 200GB+
+
+# 2. Click "Deploy" and connect via web terminal or SSH
+
+# 3. Setup
+apt update && apt install -y git nmap && \
+curl -fsSL https://ollama.com/install.sh | sh && \
+git clone https://github.com/AshtonVaughan/ProjectTriage.git && \
+cd ProjectTriage && \
+python3 -m venv .venv && source .venv/bin/activate && \
+pip install openai rich numpy
+
+# 4. Pull models and run
+ollama serve &
+sleep 5
+ollama pull qwen3:32b && ollama pull qwen3:4b
+python main.py
+```
+</details>
+
+<details>
+<summary><b>Lambda Labs (premium, reliable)</b></summary>
+
+```bash
+# 1. Go to lambdalabs.com/cloud
+#    - Select: 1x H100 ($2.49/hr) or 1x A100 ($1.29/hr)
+#    - Lambda instances come with CUDA pre-installed
+
+# 2. SSH in with the key you configured
+ssh ubuntu@<ip>
+
+# 3. Setup
+sudo apt update && sudo apt install -y git nmap && \
+curl -fsSL https://ollama.com/install.sh | sh && \
+git clone https://github.com/AshtonVaughan/ProjectTriage.git && \
+cd ProjectTriage && \
+python3 -m venv .venv && source .venv/bin/activate && \
+pip install openai rich numpy
+
+# 4. Pull models and run
+ollama serve &
+sleep 5
+ollama pull qwen3:32b && ollama pull qwen3:4b
+python main.py
+```
+</details>
+
+<details>
+<summary><b>Vultr Cloud GPU</b></summary>
+
+```bash
+# 1. Go to vultr.com, deploy a Cloud GPU instance
+#    - GPU: A100 80GB or H100
+#    - OS: Ubuntu 22.04
+#    - Storage: 200GB+ NVMe
+
+# 2. SSH in
+ssh root@<ip>
+
+# 3. Setup
+apt update && apt install -y git python3-pip python3-venv nmap curl && \
+curl -fsSL https://ollama.com/install.sh | sh && \
+git clone https://github.com/AshtonVaughan/ProjectTriage.git && \
+cd ProjectTriage && \
+python3 -m venv .venv && source .venv/bin/activate && \
+pip install openai rich numpy
+
+# 4. Pull models and run
+ollama serve &
+sleep 5
+ollama pull qwen3:32b && ollama pull qwen3:4b
+python main.py
+```
+</details>
+
+<details>
+<summary><b>Any VPS / Dedicated Server with GPU</b></summary>
+
+```bash
+# Works on any Linux server with an NVIDIA GPU and SSH access
+
+# 1. Install NVIDIA drivers (skip if already installed)
+nvidia-smi  # Check if drivers are present
+
+# 2. One-line setup
+apt update && apt install -y git python3-pip python3-venv nmap curl && \
+curl -fsSL https://ollama.com/install.sh | sh && \
+git clone https://github.com/AshtonVaughan/ProjectTriage.git && \
+cd ProjectTriage && \
+python3 -m venv .venv && source .venv/bin/activate && \
+pip install openai rich numpy
+
+# 3. Pull the right model for your VRAM
+ollama serve &
+sleep 5
+VRAM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+echo "Detected ${VRAM}MB VRAM"
+
+if [ "$VRAM" -ge 80000 ]; then
+    ollama pull qwen3:235b && ollama pull qwen3:4b
+elif [ "$VRAM" -ge 40000 ]; then
+    ollama pull qwen3:32b && ollama pull qwen3:4b
+elif [ "$VRAM" -ge 20000 ]; then
+    ollama pull qwen3:14b && ollama pull qwen3:4b
+elif [ "$VRAM" -ge 12000 ]; then
+    ollama pull qwen3:8b && ollama pull qwen3:4b
+else
+    ollama pull qwen3:4b
+fi
+
+# 4. Run
+python main.py
+```
+</details>
+
+<details>
+<summary><b>Auto-setup script (alternative)</b></summary>
+
+```bash
+# If you prefer the bundled setup script that does everything:
 git clone https://github.com/AshtonVaughan/ProjectTriage.git
-cd ProjectTriage
+cd ProjectTriage && bash setup.sh
 
-# 3. Auto-setup (detects VRAM, installs everything)
-bash setup.sh
+# This auto-detects your VRAM, installs Ollama, pulls optimal models,
+# installs Go security tools, and verifies the installation.
+```
+</details>
 
-# 4. Hunt
-bash /root/hunt.sh target.com
+### Using vLLM Instead of Ollama (Higher Throughput)
+
+For maximum performance on GPU servers, use vLLM instead of Ollama:
+
+```bash
+# Install vLLM
+pip install vllm
+
+# Serve the model (runs on port 8000)
+vllm serve Qwen/Qwen3-32B --port 8000 --max-model-len 32768 &
+
+# Project Triage auto-detects vLLM
+python main.py
+```
+
+### Running in Background (tmux)
+
+For long hunts on cloud GPUs, use tmux so the hunt survives SSH disconnects:
+
+```bash
+# Start a tmux session
+tmux new -s hunt
+
+# Inside tmux: start Ollama and run the hunt
+ollama serve &
+sleep 3
+cd ProjectTriage && source .venv/bin/activate
+python main.py
+
+# Detach: Ctrl+B then D
+# Reconnect later: tmux attach -t hunt
 ```
 
 ### Supported LLM Backends
@@ -594,17 +822,21 @@ bash /root/hunt.sh target.com
 | TabbyAPI | 5000 | `tabbyapi` | Yes |
 | FastFlowLM | 52625 | `flm serve <model>` | Yes |
 
-Or specify manually: `--provider ollama --url http://127.0.0.1:11434/v1`
+All auto-detected by the TUI. Or specify manually with CLI: `--provider ollama --url http://127.0.0.1:11434/v1`
 
 ---
 
 ## CLI Reference
 
+**TUI mode (recommended):** just run `python main.py` with no arguments. Everything is configured interactively.
+
+**CLI mode** (for scripting, automation, CI/CD):
+
 ```
 python main.py [options]
 
 TARGET:
-  -t, --target           Target domain or URL (or launch interactive TUI with no args)
+  -t, --target           Target domain or URL
 
 MODEL:
   -m, --model            Planning model name (default: auto-detect first available)
@@ -623,12 +855,14 @@ UTILITY:
   --dry-run              Show configuration and available tools without running
   --scan-providers       Scan all known ports for running LLM servers
 
-OPTIONAL ENVIRONMENT VARIABLES:
-  FRONTIER_API_KEY       API key for optional frontier model escalation
+ENVIRONMENT VARIABLES (optional):
+  FRONTIER_API_KEY       API key for frontier model escalation (or set via TUI Settings)
   FRONTIER_MODEL         Frontier model name (default: claude-sonnet-4-20250514)
   FRONTIER_URL           Frontier API URL (default: https://api.anthropic.com/v1)
   MAX_ESCALATIONS        Max frontier escalations per session (default: 10)
 ```
+
+**Config persistence:** All settings configured via TUI are saved to `data/saved_profiles.json` and loaded automatically on next run. No need to remember CLI flags.
 
 ---
 
@@ -648,6 +882,7 @@ findings/{target}/
     sessions/                  # Full session replay
 
 data/
+    saved_profiles.json        # TUI saved configs and last-used settings
     project_triage.db          # SQLite: hypotheses, findings, sessions
     procedural_memory.db       # Learned attack skills (persists across sessions)
     curriculum.db              # Mastery levels per technique
