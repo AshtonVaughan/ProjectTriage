@@ -52,6 +52,7 @@ from disclosures import DisclosureLookup
 from dom_analyzer import DOMAnalyzer
 from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
+from evidence_collector import EvidenceCollector as AdvancedEvidenceCollector
 from fuzzer import SmartFuzzer
 from h2_desync import H2DesyncTester
 from infra_scanner import InfraScanner
@@ -154,6 +155,7 @@ class Agent:
         self.program_intel = ProgramIntelligence()
         self.oob = InteractshClient()
         self.differential = DifferentialEngine()
+        self.evidence_adv = AdvancedEvidenceCollector(config.findings_dir)
         # High-priority gap modules
         self.h2_desync = H2DesyncTester()
         self.mcp_tester = MCPTester()
@@ -674,6 +676,30 @@ class Agent:
                             severity=severity,
                             confidence=int(verification.confidence * 100),
                         )
+
+                        # Build evidence package for the finding
+                        try:
+                            evidence_pkg = self.evidence_adv.build_evidence_package(
+                                finding_id=hyp.id,
+                                finding_title=compressed[:100],
+                                tool_traces=[{
+                                    "tool_name": response.action,
+                                    "url": hyp.endpoint,
+                                    "tool_input": str(response.action_input)[:200],
+                                    "tool_output": observation[:500],
+                                }],
+                                observation=observation,
+                            )
+                            # Quantify impact
+                            evidence_pkg.impact_metrics = self.evidence_adv.quantify_impact(
+                                hyp.id, hyp.endpoint, hyp.technique,
+                            )
+                            if evidence_pkg.has_hard_evidence:
+                                self.console.print(
+                                    f"[green]Evidence: {evidence_pkg.evidence_summary}[/green]"
+                                )
+                        except Exception:
+                            pass
 
                         # Record positive MCTS experience
                         outcome = "sqli_confirmed" if "sql" in hyp.technique.lower() else \
