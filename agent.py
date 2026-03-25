@@ -3,18 +3,24 @@
 Architecture:
 1. Source intelligence (GitHub, Wayback, CNAME, API specs)
 2. Tech fingerprinting -> framework-specific hypothesis generation
-3. Assumption archaeology -> novel hypothesis generation
-4. Intent modeling -> business logic violation tests
-5. Hypothesis-driven attack graph (not linear phases)
-6. AGoT reasoning (multi-path exploration with self-critique)
-7. Persistent world model with MFR (trust boundaries, data flows, state machines)
-8. Chain analysis with connector bug reasoning
-9. Edge analysis (inter-component boundary testing)
-10. Coverage asymmetry (prioritize under-tested surfaces)
-11. Multi-role auth testing (IDOR, auth bypass, JWT)
-12. Workflow testing (skip-step, race, OAuth 7-point)
-13. Quality gate (4-layer validation, confidence scoring, anti-noise)
-14. Cross-session strategy memory
+3. State machine extraction (XState/Redux/OpenAPI)
+4. Domain knowledge (57 patterns across 6 industries, OWASP BLA)
+5. Architectural anti-pattern detection (Orange Tsai methodology)
+6. Assumption archaeology -> novel hypothesis generation
+7. Intent modeling -> business logic violation tests
+8. Hypothesis-driven attack graph (not linear phases)
+9. MCTS-scored hypothesis selection with LLM Value Agent
+10. AGoT reasoning (multi-path exploration with self-critique)
+11. Persistent world model with MFR (trust boundaries, data flows, state machines)
+12. Perceptor - structured observation compression (51% token reduction)
+13. Chain analysis with connector bug reasoning
+14. Edge analysis (inter-component boundary testing)
+15. Coverage asymmetry (prioritize under-tested surfaces)
+16. Multi-role auth testing (IDOR, auth bypass, JWT)
+17. Workflow testing (skip-step, race, OAuth 7-point)
+18. Self-reflection - CoVe + Reflexion 3-layer finding verification
+19. Quality gate (4-layer validation, confidence scoring, anti-noise)
+20. Cross-session strategy memory with experience merge
 """
 
 from __future__ import annotations
@@ -25,38 +31,51 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
+from utils import format_duration
+
 from agot_reasoner import AGoTReasoner
+from arch_analyzer import ArchAnalyzer
 from assumption_engine import AssumptionEngine
 from attack_graph import AttackGraph
 from auth_context import AuthContext
 from chain_analyzer import ChainAnalyzer
+from chain_engine import ChainEngine
 from config import Config
 from context import ContextManager, Step
 from cost_tracker import CostTracker
 from coverage_asymmetry import CoverageAsymmetryDetector
 from db import Database
 from disclosures import DisclosureLookup
+from domain_knowledge import DomainKnowledge
 from edge_analyzer import EdgeAnalyzer
+from infra_scanner import InfraScanner
 from evidence import EvidenceCapture
 from hypothesis import Hypothesis, HypothesisEngine
 from intent_model import IntentModel
 from js_analyzer import analyze_target as js_analyze_target, integrate_with_target_model
 from knowledge import format_knowledge_context, get_chain_suggestions, PIVOT_RULES, get_methodology
+from mcts_explorer import MCTSExplorer
+from osint_engine import OSINTEngine
 from memory import TargetMemory
 from parallel import parallel_recon
 from patterns import PatternsMemory
+from perceptor import Perceptor
 from prompts import SYSTEM_PROMPT, REACT_TEMPLATE
 from provider import Provider, ReActResponse
+from quality_gate import QualityGate
 from sanitizer import sanitize_action, sanitize_inputs
 from scope import Scope
+from self_reflect import SelfReflector
 from session import SessionRecorder
 from source_intel import SourceIntel
+from state_machine import StateMachineExtractor
 from target_model import TargetModel
 from tech_fingerprint import TechFingerprinter
 from tool_registry import ToolRegistry
 from validator import Validator
 from workflow_tester import WorkflowTester
 from world_model import WorldModel
+from live_display import LiveDisplay, print_banner, print_finding_alert, print_hunt_complete
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
@@ -95,6 +114,21 @@ class Agent:
         self.coverage_detector = CoverageAsymmetryDetector()
         self.workflow_tester = WorkflowTester()
         self.agot = AGoTReasoner()
+        # Round 1 modules (state machine, domain knowledge, arch analysis)
+        self.state_machine_extractor = StateMachineExtractor()
+        self.domain_knowledge = DomainKnowledge()
+        self.arch_analyzer = ArchAnalyzer()
+        # Round 2 modules (perceptor, self-reflection, MCTS)
+        self.perceptor = Perceptor(provider)
+        self.self_reflect = SelfReflector(provider)
+        self.mcts = MCTSExplorer(provider, config.data_dir)
+        self.quality_gate = QualityGate()
+        # Round 3 modules (infra scanning, OSINT, chain engine)
+        self.infra_scanner = InfraScanner()
+        self.osint_engine = OSINTEngine()
+        self.chain_engine = ChainEngine()
+        # Live TUI display
+        self.display = LiveDisplay(console)
 
         # Initialized per-target in run()
         self.target_model: TargetModel | None = None
@@ -112,6 +146,8 @@ class Agent:
         try:
             return self._run_inner(target)
         finally:
+            # Ensure display is stopped even on crash
+            self.display.stop()
             self.db.close()
 
     def _run_inner(self, target: str) -> str:
@@ -165,24 +201,16 @@ class Agent:
         )
         hunt_number = self.memory.get_hunt_count() + 1
 
-        # Display hunt header
-        stale_status = "STALE - full recon" if self.target_model.is_stale else "FRESH - reusing"
-        prior_context = self.memory.load_context()
-        defenses = self.memory.load_defenses()
-
-        self.console.print(Panel(
-            f"[bold]Target:[/bold] {target}\n"
-            f"[bold]Architecture:[/bold] v3 Hypothesis-Driven Attack Graph\n"
-            f"[bold]Provider:[/bold] {self.provider._detect_backend_name()} ({self.provider.model})\n"
-            f"[bold]Tools:[/bold] {self.config.available_tools_summary()}\n"
-            f"[bold]Target Model:[/bold] {stale_status}\n"
-            f"[bold]Hunt #:[/bold] {hunt_number} | Budget: {total_budget} steps\n"
-            + (f"[bold]Patterns:[/bold] {self.patterns.summary()}\n")
-            + (f"[bold]Defenses:[/bold] {defenses[:200]}...\n" if defenses else "")
-            + (f"[bold]Context:[/bold] {prior_context[:200]}...\n" if prior_context else ""),
-            title="[bold red]Project Triage v4[/bold red]",
-            border_style="red",
-        ))
+        # Display hunt banner (beautiful startup screen)
+        print_banner(
+            self.console,
+            target=target,
+            model=self.provider.model,
+            fast_model=self.provider.fast_model or "",
+            tools_count=len(self.registry.tools),
+            hunt_number=hunt_number,
+            budget=total_budget,
+        )
 
         # Build tool embeddings for ToolRAG
         self.console.print("[dim]Building tool embeddings...[/dim]")
@@ -196,6 +224,10 @@ class Agent:
         self.console.print("\n[bold cyan]>>> Source Intelligence[/bold cyan]")
         self._run_source_intel(target)
 
+        # OSINT deep scan (cloud assets, staging envs, source maps)
+        self.console.print("\n[bold cyan]>>> OSINT Deep Scan[/bold cyan]")
+        self._run_osint_deep(target)
+
         # Run parallel recon if target model is stale
         if self.target_model.is_stale:
             self.console.print("\n[bold cyan]>>> Parallel Recon (subfinder + nmap + httpx)[/bold cyan]")
@@ -205,9 +237,17 @@ class Agent:
         self.console.print("\n[bold cyan]>>> Tech Fingerprinting[/bold cyan]")
         self._run_fingerprinting(target)
 
+        # Infrastructure-class target identification
+        self.console.print("\n[bold cyan]>>> Infrastructure Scanner ($100K methodology)[/bold cyan]")
+        self._run_infra_scan(target)
+
         # JS bundle analysis
         self.console.print("\n[bold cyan]>>> JS Bundle Analysis[/bold cyan]")
         self._run_js_analysis(target)
+
+        # State machine extraction from JS bundles
+        self.console.print("\n[bold cyan]>>> State Machine Extraction[/bold cyan]")
+        self._run_state_machine_analysis(target)
 
         # Disclosure dedup check
         self._run_disclosure_check(target)
@@ -239,6 +279,14 @@ class Agent:
         self.console.print("[bold cyan]>>> Inter-Component Edge Analysis[/bold cyan]")
         self._run_edge_analysis(target)
 
+        # Domain-specific vulnerability patterns
+        self.console.print("[bold cyan]>>> Domain Knowledge Analysis[/bold cyan]")
+        self._run_domain_knowledge_hypotheses(target)
+
+        # Architectural anti-pattern detection (Orange Tsai methodology)
+        self.console.print("[bold cyan]>>> Architectural Anti-Pattern Analysis[/bold cyan]")
+        self._run_arch_analysis_hypotheses(target)
+
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
             self.console.print(
@@ -249,10 +297,15 @@ class Agent:
         # ============================================================
         # MAIN LOOP: Hypothesis-driven testing
         # ============================================================
-        self.console.print(f"\n[bold cyan]>>> Starting hypothesis-driven testing ({total_budget} step budget)[/bold cyan]\n")
+
+        # Start the live TUI display
+        self._hunt_start_time = time.monotonic()
+        self.display.start(target, self.provider.model, total_budget)
+        self.display.log(f"Starting hypothesis-driven testing ({total_budget} step budget)", "bold cyan")
 
         consecutive_errors = 0
         recent_actions: list[str] = []
+        attack_path_log: list[str] = []  # For MCTS context
 
         while not self.attack_graph.is_complete:
             # Engagement meta-reasoning (100-hour rule equivalent)
@@ -275,6 +328,29 @@ class Agent:
                 pivot_advice = self._get_pivot_advice()
                 self.console.print(f"[yellow]>>> Pivoting: {pivot_advice}[/yellow]")
 
+            # MCTS: Score top hypotheses and potentially reorder queue
+            tech_stack = self.world.tech_stack if self.world else {}
+            if (len(self.attack_graph.hypothesis_queue) >= 3
+                    and self.attack_graph.total_steps % 5 == 0):
+                try:
+                    scored = self.mcts.score_top_n(
+                        self.attack_graph.hypothesis_queue, attack_path_log, tech_stack, n=3,
+                    )
+                    if scored:
+                        # Reorder queue head if MCTS disagrees with heuristic
+                        best_hyp, best_score = scored[0]
+                        if best_hyp.id != self.attack_graph.hypothesis_queue[0].id:
+                            # Move MCTS-preferred hypothesis to front
+                            queue = self.attack_graph.hypothesis_queue
+                            queue.remove(best_hyp)
+                            queue.insert(0, best_hyp)
+                            self.console.print(
+                                f"[dim]MCTS reorder: {best_hyp.technique} "
+                                f"(score={best_score.numerical}/10: {best_score.explanation})[/dim]"
+                            )
+                except Exception as e:
+                    self.console.print(f"[dim]MCTS scoring skipped: {e}[/dim]")
+
             # Get next hypothesis
             hyp = self.attack_graph.next_hypothesis()
             if not hyp:
@@ -287,16 +363,36 @@ class Agent:
 
             # Display current state
             phase_label = self.attack_graph.get_current_phase_label()
-            self.console.print(
-                f"[dim]{self.attack_graph.get_progress()} | "
-                f"Phase: {phase_label} | "
-                f"Testing: {hyp.technique} on {hyp.endpoint[:60]}[/dim]"
+
+            # Update live display: hypothesis panel + stats
+            self.display.update_hypothesis(
+                active={"technique": hyp.technique, "total_score": hyp.total_score},
+                queue=[
+                    {"technique": h.technique, "total_score": h.total_score}
+                    for h in self.attack_graph.hypothesis_queue[:5]
+                ],
+            )
+            token_stats = self.provider.token_stats()
+            self.display.update_stats(
+                step=self.attack_graph.total_steps,
+                tokens=token_stats.get("total_input", 0) + token_stats.get("total_output", 0),
+                llm_calls=self.provider.total_calls,
+                cost=f"A${0:.2f}",  # Local LLM = free
+                phase=phase_label,
             )
 
             # Execute one ReAct step for this hypothesis
             step_start = time.monotonic()
             response = self._agent_step(target, hyp, phase_label)
             step_duration_ms = (time.monotonic() - step_start) * 1000
+
+            # Update live display with thought + action
+            if response.thought:
+                self.display.update_thought(response.thought)
+            if response.action and response.action not in ("ADVANCE", "DONE", ""):
+                self.display.update_action(
+                    response.action, str(response.action_input)[:120],
+                )
 
             # Sanitize
             available = list(self.registry.tools.keys())
@@ -349,10 +445,15 @@ class Agent:
                 self.attack_graph.record_step()
                 continue
 
-            # Execute tool
+            # Execute tool (with live display spinner)
+            self.display.start_tool(response.action)
             tool_start = time.monotonic()
             observation = self._execute_tool(response.action, response.action_input)
             tool_duration_ms = (time.monotonic() - tool_start) * 1000
+            is_tool_error = "error" in observation.lower()[:200]
+            self.display.finish_tool(
+                response.action, observation[:200], is_error=is_tool_error,
+            )
 
             # Cap observation
             if len(observation) > MAX_OBSERVATION_BYTES:
@@ -385,8 +486,18 @@ class Agent:
             self._update_world_model(response.action, response.action_input, observation)
             self._update_target_model(response.action, response.action_input, observation)
 
-            # Compress observation
-            compressed = self._compress_observation(response.action, observation)
+            # Perceptor: structured extraction + compression (replaces raw compress)
+            facts = self.perceptor.perceive(
+                response.action, observation, hyp.endpoint, hyp.technique,
+            )
+            # Feed structured facts back into world model
+            self.perceptor.feed_to_world_model(facts, self.world)
+            compressed = facts.raw_summary
+
+            # Log action to attack path for MCTS context
+            attack_path_log.append(f"{response.action} on {hyp.endpoint}: {compressed[:80]}")
+            if len(attack_path_log) > 20:
+                attack_path_log = attack_path_log[-20:]
 
             # Check if finding
             is_finding = self._is_finding(compressed)
@@ -402,60 +513,104 @@ class Agent:
 
             # Record hypothesis result
             if is_finding:
-                # Run 3-layer validation gate before recording
-                validated = self._validate_finding(
-                    title=compressed[:100],
-                    target=target,
-                    endpoint=hyp.endpoint,
-                    technique=hyp.technique,
-                    description=compressed,
-                    observation=observation,
+                # Quality gate: check for noise patterns first
+                is_noise, noise_reason = self.quality_gate.is_noise(
+                    hyp.technique, compressed,
                 )
-
-                severity = validated.severity if validated else "unknown"
-                status = validated.status if validated else "needs_proof"
-
-                if validated and validated.status == "rejected":
-                    self.console.print(
-                        f"[yellow]Finding rejected by validator: "
-                        f"{validated.validations[-1].notes if validated.validations else 'failed'}[/yellow]"
+                if is_noise:
+                    self.console.print(f"[dim]Noise filtered: {noise_reason}[/dim]")
+                    self.attack_graph.record_result(hyp.id, success=False, finding="Noise filtered")
+                    # Record MCTS experience
+                    self.mcts.record_experience(
+                        hyp.technique, hyp.endpoint, "nothing",
+                        self.attack_graph.total_steps, tech_stack,
                     )
-                    self.attack_graph.record_result(hyp.id, success=False, finding="Rejected by validator")
                 else:
-                    self.attack_graph.record_result(hyp.id, success=True, finding=compressed[:200])
-                    self.world.add_finding(
-                        id=hyp.id,
-                        title=compressed[:100],
-                        severity=severity,
-                        description=compressed,
-                        endpoint=hyp.endpoint,
-                        technique=hyp.technique,
-                        step_found=self.attack_graph.total_steps,
-                        chain_potential=[hyp.technique],
+                    # Self-reflection: CoVe + Reflexion 3-layer verification
+                    verification = self.self_reflect.verify_finding(
+                        finding={
+                            "title": compressed[:100],
+                            "technique": hyp.technique,
+                            "severity": "medium",
+                            "endpoint": hyp.endpoint,
+                        },
+                        observation=observation,
+                        context=compressed,
                     )
 
-                    if status == "needs_proof":
-                        self.console.print(f"[yellow]Finding needs further proof ({severity})[/yellow]")
+                    if not verification.passed or verification.grade in ("D", "F"):
+                        self.console.print(
+                            f"[yellow]Finding rejected by self-reflection "
+                            f"(grade={verification.grade}, conf={verification.confidence:.0%}): "
+                            f"{verification.rejection_reason or 'failed verification'}[/yellow]"
+                        )
+                        self.attack_graph.record_result(hyp.id, success=False, finding="Rejected by self-reflection")
+                        self.mcts.record_experience(
+                            hyp.technique, hyp.endpoint, "nothing",
+                            self.attack_graph.total_steps, tech_stack,
+                        )
                     else:
-                        self.console.print(f"[bold green]VALIDATED finding: {severity}[/bold green]")
-
-                    # Chain analysis
-                    self._run_chain_analysis()
-
-                    # Record in session
-                    if self.session_recorder:
-                        self.session_recorder.record_finding(
-                            finding_id=hyp.id,
+                        severity = "high" if verification.grade == "A" else "medium"
+                        self.attack_graph.record_result(hyp.id, success=True, finding=compressed[:200])
+                        self.world.add_finding(
+                            id=hyp.id,
                             title=compressed[:100],
                             severity=severity,
-                            phase=phase_label,
-                            step_number=self.attack_graph.total_steps + 1,
+                            description=compressed,
+                            endpoint=hyp.endpoint,
+                            technique=hyp.technique,
+                            step_found=self.attack_graph.total_steps,
+                            chain_potential=[hyp.technique],
                         )
 
-                    # Check if new recon suggested
-                    if self.attack_graph.suggest_new_recon():
-                        self.console.print("[cyan]>>> Finding suggests new recon needed[/cyan]")
-                        self._generate_hypotheses_from_state(target)
+                        self.console.print(
+                            f"[bold green]VERIFIED finding (grade={verification.grade}, "
+                            f"conf={verification.confidence:.0%}): {verification.recommendation}[/bold green]"
+                        )
+
+                        # Update live display with finding
+                        self.display.add_finding(
+                            title=compressed[:100],
+                            severity=severity,
+                            confidence=int(verification.confidence * 100),
+                            endpoint=hyp.endpoint,
+                        )
+                        print_finding_alert(
+                            self.console,
+                            title=compressed[:80],
+                            severity=severity,
+                            confidence=int(verification.confidence * 100),
+                        )
+
+                        # Record positive MCTS experience
+                        outcome = "sqli_confirmed" if "sql" in hyp.technique.lower() else \
+                                  "xss_confirmed" if "xss" in hyp.technique.lower() else \
+                                  "ssrf_confirmed" if "ssrf" in hyp.technique.lower() else \
+                                  "rce_confirmed" if "rce" in hyp.technique.lower() else \
+                                  "idor_confirmed" if "idor" in hyp.technique.lower() else \
+                                  "info_disclosure"
+                        self.mcts.record_experience(
+                            hyp.technique, hyp.endpoint, outcome,
+                            self.attack_graph.total_steps, tech_stack,
+                        )
+
+                        # Chain analysis
+                        self._run_chain_analysis()
+
+                        # Record in session
+                        if self.session_recorder:
+                            self.session_recorder.record_finding(
+                                finding_id=hyp.id,
+                                title=compressed[:100],
+                                severity=severity,
+                                phase=phase_label,
+                                step_number=self.attack_graph.total_steps + 1,
+                            )
+
+                        # Check if new recon suggested
+                        if self.attack_graph.suggest_new_recon():
+                            self.console.print("[cyan]>>> Finding suggests new recon needed[/cyan]")
+                            self._generate_hypotheses_from_state(target)
             else:
                 self.attack_graph.record_result(hyp.id, success=False, finding="")
 
@@ -478,6 +633,12 @@ class Agent:
             self.context.add_step(step)
             self.attack_graph.record_step()
 
+            # Update live display: world model summary
+            if self.world:
+                self.display.update_world(
+                    self.world.get_attack_context(max_chars=300)
+                )
+
             # Record in session
             if self.session_recorder:
                 self.session_recorder.record_step(
@@ -492,6 +653,9 @@ class Agent:
         # ============================================================
         # WRAP UP
         # ============================================================
+        # Stop the live display before printing final summaries
+        self.display.stop()
+
         self.target_model.save()
         self.world.save()
         if self.scope:
@@ -499,6 +663,22 @@ class Agent:
         # Persist attack graph state for session resume
         if self.attack_graph:
             self.attack_graph.save_state(self.config.findings_dir)
+
+        # Save MCTS cross-target memory
+        try:
+            self.mcts.merge_experiences()
+            self.mcts._save_memory()
+        except Exception:
+            pass
+
+        # Display Round 2 module stats
+        self.console.print(Panel(
+            f"Perceptor: {self.perceptor.stats}\n"
+            f"Self-Reflection: {self.self_reflect.stats}\n"
+            f"MCTS Explorer: {self.mcts.stats}",
+            title="[bold]Module Stats[/bold]",
+            border_style="dim",
+        ))
 
         # Record hunt session
         findings_summary = self.attack_graph.get_findings_summary()
@@ -523,7 +703,19 @@ class Agent:
             self.cost_tracker.save(self.config.findings_dir)
             self.cost_tracker.display(self.console)
 
-        # Final summary
+        # Hunt complete banner
+        elapsed_seconds = time.monotonic() - (self._hunt_start_time or time.monotonic())
+        token_stats = self.provider.token_stats()
+        total_tokens = token_stats.get("total_input", 0) + token_stats.get("total_output", 0)
+        print_hunt_complete(
+            self.console,
+            findings_count=self.attack_graph.findings_count,
+            steps=self.attack_graph.total_steps,
+            elapsed=format_duration(elapsed_seconds),
+            tokens=total_tokens,
+        )
+
+        # Detailed findings summary
         self.console.print(Panel(
             findings_summary,
             title="[bold green]Findings Summary[/bold green]",
@@ -904,6 +1096,298 @@ class Agent:
         except Exception as e:
             self.console.print(f"[dim]Edge analysis skipped: {e}[/dim]")
 
+    def _run_osint_deep(self, target: str) -> None:
+        """Run deep OSINT: cloud assets, staging envs, source maps, JS secrets."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            domain = target.replace("https://", "").replace("http://", "").split("/")[0]
+            company = domain.split(".")[-2] if "." in domain else domain
+
+            # Cloud asset enumeration
+            cloud_assets = self.osint_engine.run_cloud_enum(company, max_checks=15)
+            if cloud_assets:
+                self.console.print(
+                    f"[cyan]Cloud: {len(cloud_assets)} assets found "
+                    f"({sum(1 for a in cloud_assets if a.status == 'public_read')} public)[/cyan]"
+                )
+
+            # Staging environment discovery
+            staging_envs = self.osint_engine.discover_staging(domain)
+            if staging_envs:
+                self.console.print(f"[cyan]Staging: {len(staging_envs)} dev/staging environments found[/cyan]")
+
+            # Source map check on known JS URLs
+            js_urls = []
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_data = self.target_model.data["js_analysis"]
+                js_urls = js_data.get("js_urls", [])[:10]
+            source_maps = self.osint_engine.run_source_map_check(js_urls)
+            if source_maps:
+                self.console.print(
+                    f"[bold red]>>> {len(source_maps)} source maps found! "
+                    f"({sum(len(sm.secrets_found) for sm in source_maps)} secrets)[/bold red]"
+                )
+
+            # JS secrets from any available JS content
+            js_secrets: list[dict[str, str]] = []
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_content = str(self.target_model.data["js_analysis"].get("raw_content", ""))
+                if js_content:
+                    js_secrets = self.osint_engine.scan_js_secrets(js_content)
+                    if js_secrets:
+                        self.console.print(f"[bold red]>>> {len(js_secrets)} JS secrets found![/bold red]")
+
+            # Generate hypotheses from OSINT findings
+            hyp_dicts = self.osint_engine.generate_hypotheses(
+                cloud_assets, source_maps, staging_envs, js_secrets, url,
+            )
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "osint_finding"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 7),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 2),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} OSINT-based hypotheses generated[/cyan]")
+
+        except Exception as e:
+            self.console.print(f"[dim]OSINT deep scan skipped: {e}[/dim]")
+
+    def _run_infra_scan(self, target: str) -> None:
+        """Identify infrastructure-class targets and generate $100K-tier hypotheses."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+
+            # Gather all available recon data
+            hosts = list(self.world.hosts.keys()) if self.world else [target]
+            tech_stack = self.world.tech_stack if self.world else {}
+            headers = {}
+            if self.target_model and self.target_model.data.get("headers"):
+                headers = self.target_model.data["headers"]
+            endpoints = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints = [
+                    ep.get("url", "") if isinstance(ep, dict) else str(ep)
+                    for ep in self.target_model.data["endpoints"][:50]
+                ]
+            observations = []
+            if self.target_model and self.target_model.data.get("recon_observations"):
+                observations = self.target_model.data["recon_observations"][-20:]
+
+            # Identify infrastructure targets
+            infra_targets = self.infra_scanner.identify_infra_targets(
+                hosts, tech_stack, headers, endpoints, observations,
+            )
+            if infra_targets:
+                self.console.print(
+                    f"[bold red]>>> {len(infra_targets)} infrastructure targets identified![/bold red]"
+                )
+                for it in infra_targets[:3]:
+                    self.console.print(
+                        f"  [red]P{it.priority} {it.category}: "
+                        f"{it.payout_potential} tier[/red]"
+                    )
+
+            # Detect deserialization surfaces
+            content_types = []
+            if self.target_model and self.target_model.data.get("content_types"):
+                content_types = self.target_model.data["content_types"]
+            deser_surfaces = self.infra_scanner.detect_deserialization_surfaces(
+                endpoints, content_types, headers,
+            )
+            if deser_surfaces:
+                self.console.print(
+                    f"[bold red]>>> {len(deser_surfaces)} deserialization surfaces detected![/bold red]"
+                )
+
+            # Generate hypotheses
+            created = []
+            infra_hyps = self.infra_scanner.generate_infra_hypotheses(infra_targets, url)
+            deser_hyps = self.infra_scanner.generate_deser_hypotheses(deser_surfaces, url)
+
+            for h in infra_hyps + deser_hyps:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "infra_scan"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 8),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 9),
+                    effort=h.get("effort", 5),
+                )
+                if hyp:
+                    # Apply payout tier boost
+                    boost = h.get("priority_multiplier", 1.0)
+                    if boost > 1.0:
+                        hyp.total_score *= boost
+                    created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} infrastructure hypotheses generated[/cyan]")
+
+        except Exception as e:
+            self.console.print(f"[dim]Infrastructure scan skipped: {e}[/dim]")
+
+    def _run_state_machine_analysis(self, target: str) -> None:
+        """Extract state machines from JS bundles and generate violation tests."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            # Get JS content from target model if available
+            js_content = ""
+            if self.target_model and self.target_model.data.get("js_analysis"):
+                js_data = self.target_model.data["js_analysis"]
+                js_content = str(js_data.get("raw_content", ""))
+
+            # Also try OpenAPI spec if available
+            openapi_spec = None
+            if self.target_model and self.target_model.data.get("api_specs"):
+                specs = self.target_model.data["api_specs"]
+                if specs:
+                    openapi_spec = specs[0] if isinstance(specs[0], dict) else None
+
+            machines = self.state_machine_extractor.extract_all(
+                js_content=js_content,
+                openapi_spec=openapi_spec,
+            )
+
+            total_violations = 0
+            created = []
+            for machine in machines[:5]:
+                violations = self.state_machine_extractor.generate_violations(machine)
+                hyp_dicts = self.state_machine_extractor.violations_to_hypotheses(violations[:5])
+                for h in hyp_dicts:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", url),
+                        technique=f"state_machine_{h.get('technique', 'violation')}",
+                        description=h.get("description", ""),
+                        novelty=8, exploitability=7, impact=8, effort=3,
+                    )
+                    if hyp:
+                        created.append(hyp)
+                total_violations += len(violations)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(
+                    f"[cyan]{len(machines)} state machines found, "
+                    f"{total_violations} violations, "
+                    f"{len(created)} hypotheses generated[/cyan]"
+                )
+            else:
+                self.console.print("[dim]No state machines extracted from JS bundles[/dim]")
+        except Exception as e:
+            self.console.print(f"[dim]State machine analysis skipped: {e}[/dim]")
+
+    def _run_domain_knowledge_hypotheses(self, target: str) -> None:
+        """Generate domain-specific vulnerability hypotheses (OWASP BLA)."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get endpoints for domain detection
+            endpoints_raw = []
+            if self.target_model and self.target_model.data.get("endpoints"):
+                endpoints_raw = self.target_model.data["endpoints"]
+            endpoint_strs = [
+                ep.get("url", "") if isinstance(ep, dict) else str(ep)
+                for ep in endpoints_raw[:50]
+            ]
+
+            domain = self.domain_knowledge.detect_domain(url, endpoint_strs, tech_stack)
+            patterns = self.domain_knowledge.get_patterns(domain)
+
+            if not patterns:
+                self.console.print(f"[dim]No domain patterns for detected domain: {domain}[/dim]")
+                return
+
+            hyp_dicts = self.domain_knowledge.patterns_to_hypotheses(patterns[:12], url)
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", f"domain_{domain}"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 8),
+                    exploitability=h.get("exploitability", 7),
+                    impact=h.get("impact", 8),
+                    effort=h.get("effort", 4),
+                )
+                if hyp:
+                    created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(
+                    f"[cyan]Domain: {domain} - {len(created)} "
+                    f"domain-specific hypotheses generated[/cyan]"
+                )
+
+            # Inject domain context into world model
+            if self.world:
+                domain_ctx = self.domain_knowledge.format_domain_context(domain, max_chars=500)
+                if domain_ctx:
+                    self.world.set_tech("detected_domain", domain)
+
+        except Exception as e:
+            self.console.print(f"[dim]Domain knowledge skipped: {e}[/dim]")
+
+    def _run_arch_analysis_hypotheses(self, target: str) -> None:
+        """Detect architectural anti-patterns and generate hypotheses (Orange Tsai)."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            url = target if target.startswith("http") else f"https://{target}"
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Get response headers from target model
+            headers = {}
+            if self.target_model and self.target_model.data.get("headers"):
+                headers = self.target_model.data["headers"]
+
+            patterns = self.arch_analyzer.detect_patterns(url, tech_stack, headers)
+            if not patterns:
+                self.console.print("[dim]No architectural anti-patterns detected[/dim]")
+                return
+
+            created = []
+            for pattern in patterns[:10]:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=url,
+                    technique=f"arch_{pattern.name}",
+                    description=f"[Orange Tsai] {pattern.description}",
+                    novelty=9, exploitability=7,
+                    impact=9 if pattern.severity == "critical" else 8,
+                    effort=5,
+                )
+                if hyp:
+                    created.append(hyp)
+
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(
+                    f"[cyan]{len(created)} architectural anti-pattern hypotheses generated "
+                    f"({', '.join(p.name for p in patterns[:3])})[/cyan]"
+                )
+        except Exception as e:
+            self.console.print(f"[dim]Arch analysis skipped: {e}[/dim]")
+
     def _generate_initial_hypotheses(self, target: str) -> None:
         """Generate initial hypotheses from recon data + patterns + defaults."""
         if not self.hypothesis_engine or not self.attack_graph:
@@ -1005,44 +1489,71 @@ class Agent:
         return len(created)
 
     def _run_chain_analysis(self) -> None:
-        """Run chain analysis on current findings and inject chain hypotheses."""
+        """Run chain analysis on current findings and inject chain hypotheses.
+
+        Uses both the original chain_analyzer (template-based) and the new
+        chain_engine (capability-based graph reasoning with bidirectional search).
+        """
         if not self.world or not self.attack_graph or not self.hypothesis_engine:
             return
 
         findings = self.world.get_findings_for_chain_analysis()
-        if len(findings) < 2:
+        if not findings:
             return
 
-        chains = self.chain_analyzer.analyze(findings)
-        if not chains:
-            return
-
-        self.console.print(f"[bold magenta]>>> Chain analysis: {len(chains)} potential chains![/bold magenta]")
-        for chain in chains:
-            self.console.print(
-                f"  [magenta]{chain['chain_name']} ({chain['chain_severity']}) "
-                f"- confidence {chain['confidence']:.0%}[/magenta]"
-            )
-
-        # Convert chains to hypotheses
-        chain_hyps_data = self.chain_analyzer.get_chain_hypotheses(chains)
         created = []
-        for h in chain_hyps_data:
-            hyp = self.hypothesis_engine.create(
-                endpoint=h.get("endpoint", ""),
-                technique=h.get("technique", ""),
-                description=h.get("description", ""),
-                novelty=8,
-                exploitability=h.get("exploitability", 8),
-                impact=h.get("impact", 9),
-                effort=h.get("effort", 4),
-            )
-            if hyp:
-                created.append(hyp)
+        url = self.world._data.get("target", "") if self.world else ""
+
+        # --- Original template-based chain analysis ---
+        if len(findings) >= 2:
+            chains = self.chain_analyzer.analyze(findings)
+            if chains:
+                self.console.print(f"[bold magenta]>>> Chain analysis: {len(chains)} potential chains![/bold magenta]")
+                for chain in chains:
+                    self.console.print(
+                        f"  [magenta]{chain['chain_name']} ({chain['chain_severity']}) "
+                        f"- confidence {chain['confidence']:.0%}[/magenta]"
+                    )
+
+                chain_hyps_data = self.chain_analyzer.get_chain_hypotheses(chains)
+                for h in chain_hyps_data:
+                    hyp = self.hypothesis_engine.create(
+                        endpoint=h.get("endpoint", ""),
+                        technique=h.get("technique", ""),
+                        description=h.get("description", ""),
+                        novelty=8,
+                        exploitability=h.get("exploitability", 8),
+                        impact=h.get("impact", 9),
+                        effort=h.get("effort", 4),
+                    )
+                    if hyp:
+                        created.append(hyp)
+
+        # --- New capability-based chain engine (R3.3) ---
+        try:
+            chain_hyps = self.chain_engine.generate_chain_hypotheses(findings, url)
+            for h in chain_hyps:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", url),
+                    technique=h.get("technique", "chain_unknown"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 9),
+                    exploitability=h.get("exploitability", 8),
+                    impact=h.get("impact", 10),
+                    effort=h.get("effort", 4),
+                )
+                if hyp:
+                    created.append(hyp)
+            if chain_hyps:
+                self.console.print(
+                    f"[magenta]Chain engine: {len(chain_hyps)} capability-based chain hypotheses[/magenta]"
+                )
+        except Exception as e:
+            self.console.print(f"[dim]Chain engine skipped: {e}[/dim]")
 
         if created:
             self.attack_graph.add_hypotheses(created)
-            self.console.print(f"[magenta]Injected {len(created)} chain hypotheses[/magenta]")
+            self.console.print(f"[magenta]Injected {len(created)} total chain hypotheses[/magenta]")
 
     # ==================================================================
     # Agent step execution
@@ -1377,12 +1888,17 @@ class Agent:
         return "Move to a different attack surface with higher-scored hypotheses"
 
     def _compress_observation(self, tool_name: str, output: str) -> str:
+        """Legacy compression - prefer perceptor.perceive() in the main loop."""
         if len(output) < 200:
             return output
         try:
-            return self.provider.compress(tool_name, output)
+            facts = self.perceptor.perceive(tool_name, output)
+            return facts.raw_summary
         except Exception:
-            return output[:300] + "... [truncated]"
+            try:
+                return self.provider.compress(tool_name, output)
+            except Exception:
+                return output[:300] + "... [truncated]"
 
     def _is_finding(self, observation: str) -> bool:
         strong_signals = [
