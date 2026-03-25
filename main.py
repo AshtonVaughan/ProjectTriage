@@ -24,6 +24,11 @@ from tools.cache_poison import register_cache_tools
 from tools.desync import register_desync_tools
 from tools.subdomain_takeover import register_takeover_tools
 from tools.prompt_inject import register_prompt_inject_tools
+from tools.register_new import (
+    register_fuzzer_tools, register_crawler_tools, register_xss_tools,
+    register_cors_tools, register_crlf_tools, register_ssti_tools,
+    register_proto_pollution_tools,
+)
 from agent import Agent
 
 
@@ -55,6 +60,21 @@ def build_registry(config: Config) -> ToolRegistry:
     for tool in register_takeover_tools(config):
         registry.register(tool)
     for tool in register_prompt_inject_tools(config):
+        registry.register(tool)
+    # New tools from gap analysis
+    for tool in register_fuzzer_tools(config):
+        registry.register(tool)
+    for tool in register_crawler_tools(config):
+        registry.register(tool)
+    for tool in register_xss_tools(config):
+        registry.register(tool)
+    for tool in register_cors_tools(config):
+        registry.register(tool)
+    for tool in register_crlf_tools(config):
+        registry.register(tool)
+    for tool in register_ssti_tools(config):
+        registry.register(tool)
+    for tool in register_proto_pollution_tools(config):
         registry.register(tool)
     return registry
 
