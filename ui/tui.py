@@ -1,16 +1,17 @@
-"""Interactive TUI for Project Triage - arrow-key menus, model selection, settings."""
+"""Interactive TUI for Project Triage - arrow-key menus, saved configs, full setup."""
 
 from __future__ import annotations
 
+import json
 import sys
 import os
+from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.columns import Columns
 from rich import box
 
 from models.models_db import (
@@ -20,14 +21,50 @@ from models.models_db import (
 from core.provider import Provider, KNOWN_BACKENDS, ProviderInfo
 
 
-# Cross-platform key reading
+# ── Saved config persistence ────────────────────────────────────────────
+
+CONFIG_DIR = Path("data")
+CONFIG_FILE = CONFIG_DIR / "saved_profiles.json"
+
+
+def _load_profiles() -> dict[str, dict]:
+    """Load saved config profiles from disk."""
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_profiles(profiles: dict[str, dict]) -> None:
+    """Save config profiles to disk."""
+    CONFIG_DIR.mkdir(exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+
+
+def _save_last_used(config: dict[str, Any]) -> None:
+    """Save current config as the 'last used' profile."""
+    profiles = _load_profiles()
+    profiles["__last__"] = config
+    _save_profiles(profiles)
+
+
+def _get_last_used() -> dict[str, Any] | None:
+    """Get the last used config, or None."""
+    profiles = _load_profiles()
+    return profiles.get("__last__")
+
+
+# ── Cross-platform key reading ──────────────────────────────────────────
+
 if sys.platform == "win32":
     import msvcrt
 
     def read_key() -> str:
         """Read a single keypress on Windows."""
         key = msvcrt.getch()
-        if key == b"\xe0" or key == b"\x00":  # Arrow key prefix
+        if key == b"\xe0" or key == b"\x00":
             key2 = msvcrt.getch()
             if key2 == b"H": return "up"
             if key2 == b"P": return "down"
@@ -36,8 +73,12 @@ if sys.platform == "win32":
             return ""
         if key == b"\r": return "enter"
         if key == b"\x1b": return "escape"
+        if key == b"\x08": return "backspace"
         if key == b"q": return "escape"
-        return key.decode("utf-8", errors="ignore")
+        try:
+            return key.decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
 else:
     import tty
     import termios
@@ -59,22 +100,40 @@ else:
                     if ch3 == "D": return "left"
                 return "escape"
             if ch == "\r" or ch == "\n": return "enter"
+            if ch == "\x7f": return "backspace"
             if ch == "q": return "escape"
             return ch
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-def arrow_select(console: Console, title: str, items: list[str], descriptions: list[str] | None = None) -> int:
+def _text_input(console: Console, prompt: str, default: str = "") -> str:
+    """Simple text input with a default value shown."""
+    if default:
+        console.print(f"{prompt} [dim]({default})[/dim]: ", end="")
+    else:
+        console.print(f"{prompt}: ", end="")
+    value = input().strip()
+    return value if value else default
+
+
+# ── Arrow-key menu ──────────────────────────────────────────────────────
+
+def arrow_select(
+    console: Console,
+    title: str,
+    items: list[str],
+    descriptions: list[str] | None = None,
+    show_index: bool = False,
+) -> int:
     """Arrow-key menu. Returns selected index or -1 if escaped."""
     selected = 0
     total = len(items)
 
     while True:
-        # Clear and redraw
         console.clear()
         console.print(f"\n[bold cyan]{title}[/bold cyan]")
-        console.print("[dim]Use arrow keys to navigate, Enter to select, Esc/q to go back[/dim]\n")
+        console.print("[dim]Arrow keys to navigate, Enter to select, Esc to go back[/dim]\n")
 
         for i, item in enumerate(items):
             if i == selected:
@@ -84,7 +143,8 @@ def arrow_select(console: Console, title: str, items: list[str], descriptions: l
                 prefix = "   "
                 style = "dim"
 
-            line = f"{prefix} [{style}]{item}[/{style}]"
+            idx = f"[dim]{i+1}.[/dim] " if show_index else ""
+            line = f"{prefix} {idx}[{style}]{item}[/{style}]"
             console.print(line)
 
             if descriptions and i < len(descriptions) and i == selected:
@@ -103,81 +163,10 @@ def arrow_select(console: Console, title: str, items: list[str], descriptions: l
     return -1
 
 
-def model_select_menu(console: Console, provider: Provider | None = None) -> str | None:
-    """Interactive model selection with categories and details. Returns model tag or None."""
-    # Main category menu
-    cat_names = list(CATEGORIES.keys())
-    cat_labels = list(CATEGORIES.values())
+# ── Provider + model selection ──────────────────────────────────────────
 
-    while True:
-        choice = arrow_select(
-            console,
-            "Select Model Category",
-            ["[star] Recommended Models"] + cat_labels + ["[back] Cancel"],
-        )
-
-        if choice == -1 or choice == len(cat_labels) + 1:
-            return None
-
-        if choice == 0:
-            # Recommended models
-            models = get_recommended()
-        else:
-            category = cat_names[choice - 1]
-            models = get_models_by_category(category)
-
-        if not models:
-            console.print("[yellow]No models in this category.[/yellow]")
-            continue
-
-        # Model selection within category
-        model_labels = []
-        model_descs = []
-        for m in models:
-            star = " [star]" if m.recommended else ""
-            label = f"{m.name} ({m.params}) - {m.min_vram_gb}GB VRAM{star}"
-            model_labels.append(label)
-            model_descs.append(f"{m.strengths} | Context: {m.context_window} | Tag: {m.tag}")
-
-        model_labels.append("[back] Back to categories")
-
-        model_choice = arrow_select(
-            console,
-            f"Select Model",
-            model_labels,
-            model_descs,
-        )
-
-        if model_choice == -1 or model_choice == len(models):
-            continue  # Back to categories
-
-        selected = models[model_choice]
-
-        # Show model details and confirm
-        console.clear()
-        console.print(Panel(
-            f"[bold]{selected.name}[/bold]\n"
-            f"Tag: [cyan]{selected.tag}[/cyan]\n"
-            f"Parameters: {selected.params}\n"
-            f"Min VRAM: {selected.min_vram_gb} GB\n"
-            f"Context Window: {selected.context_window}\n"
-            f"Category: {selected.category}\n"
-            f"\n{selected.strengths}",
-            title="Model Details",
-            border_style="cyan",
-        ))
-
-        confirm = arrow_select(console, "Use this model?", ["Yes - select this model", "No - go back"])
-        if confirm == 0:
-            return selected.tag
-
-
-def provider_select_menu(console: Console) -> tuple[str, str] | None:
-    """Select a provider and model interactively. Returns (url, model) or None."""
-    # First scan for running providers
-    console.clear()
-    console.print("\n[dim]Scanning for LLM providers...[/dim]\n")
-
+def _scan_providers() -> list[tuple[str, ProviderInfo]]:
+    """Scan for running LLM providers. Returns [(url, ProviderInfo)]."""
     available: list[tuple[str, ProviderInfo]] = []
     for backend_id, info in KNOWN_BACKENDS.items():
         url = f"http://127.0.0.1:{info['port']}{info['base_path']}"
@@ -188,25 +177,32 @@ def provider_select_menu(console: Console) -> tuple[str, str] | None:
                 available.append((url, result))
         except Exception:
             pass
+    return available
+
+
+def provider_select_menu(console: Console) -> tuple[str, str] | None:
+    """Select a provider and model interactively. Returns (url, model) or None."""
+    console.clear()
+    console.print("\n[dim]Scanning for LLM providers...[/dim]\n")
+
+    available = _scan_providers()
 
     if not available:
         console.print("[red]No LLM providers detected.[/red]")
-        console.print("[dim]Start one of: ollama serve, flm serve, LM Studio, vllm serve[/dim]")
+        console.print("[dim]Start one of: ollama serve, vllm serve, LM Studio, llama-server[/dim]")
 
         choice = arrow_select(console, "Options", [
             "Enter custom URL",
-            "Cancel",
+            "Back",
         ])
         if choice == 0:
-            console.print("\nEnter LLM server URL: ", end="")
-            url = input().strip()
-            if url:
-                console.print("Enter model name: ", end="")
-                model = input().strip()
+            console.clear()
+            url = _text_input(console, "LLM server URL", "http://127.0.0.1:11434/v1")
+            model = _text_input(console, "Model name", "qwen3:32b")
+            if url and model:
                 return (url, model)
         return None
 
-    # Show detected providers
     provider_labels = []
     provider_descs = []
     for url, info in available:
@@ -217,7 +213,7 @@ def provider_select_menu(console: Console) -> tuple[str, str] | None:
         provider_labels.append(f"{info.name} - {len(info.models)} models ({embed_str})")
         provider_descs.append(f"URL: {url} | Models: {models_str}")
 
-    provider_labels.extend(["Enter custom URL", "Cancel"])
+    provider_labels.extend(["Enter custom URL", "Back"])
 
     choice = arrow_select(console, "Select Provider", provider_labels, provider_descs)
 
@@ -226,16 +222,14 @@ def provider_select_menu(console: Console) -> tuple[str, str] | None:
 
     if choice == len(available):
         console.clear()
-        console.print("\nEnter LLM server URL: ", end="")
-        url = input().strip()
-        console.print("Enter model name: ", end="")
-        model = input().strip()
-        return (url, model)
+        url = _text_input(console, "LLM server URL", "http://127.0.0.1:11434/v1")
+        model = _text_input(console, "Model name")
+        if url and model:
+            return (url, model)
+        return None
 
     # Provider selected, now pick model
     url, info = available[choice]
-
-    # Show server models + curated recommendations
     server_models = info.models
     model_labels = []
     model_descs = []
@@ -250,7 +244,7 @@ def provider_select_menu(console: Console) -> tuple[str, str] | None:
             model_labels.append(m)
             model_descs.append("Available on server")
 
-    model_labels.append("[back] Cancel")
+    model_labels.append("Back")
 
     model_choice = arrow_select(
         console,
@@ -265,98 +259,453 @@ def provider_select_menu(console: Console) -> tuple[str, str] | None:
     return (url, server_models[model_choice])
 
 
-def settings_menu(console: Console, config: dict[str, Any]) -> dict[str, Any]:
-    """Interactive settings editor. Returns updated config dict."""
+def model_select_menu(console: Console, provider: Provider | None = None) -> str | None:
+    """Interactive model selection with categories and details. Returns model tag or None."""
+    cat_names = list(CATEGORIES.keys())
+    cat_labels = list(CATEGORIES.values())
+
     while True:
+        choice = arrow_select(
+            console,
+            "Select Model Category",
+            ["Recommended Models"] + cat_labels + ["Back"],
+        )
+
+        if choice == -1 or choice == len(cat_labels) + 1:
+            return None
+
+        if choice == 0:
+            models = get_recommended()
+        else:
+            category = cat_names[choice - 1]
+            models = get_models_by_category(category)
+
+        if not models:
+            continue
+
+        model_labels = []
+        model_descs = []
+        for m in models:
+            star = " *" if m.recommended else ""
+            label = f"{m.name} ({m.params}) - {m.min_vram_gb}GB VRAM{star}"
+            model_labels.append(label)
+            model_descs.append(f"{m.strengths} | Context: {m.context_window} | Tag: {m.tag}")
+
+        model_labels.append("Back")
+
+        model_choice = arrow_select(console, "Select Model", model_labels, model_descs)
+
+        if model_choice == -1 or model_choice == len(models):
+            continue
+
+        return models[model_choice].tag
+
+
+# ── Settings menu ───────────────────────────────────────────────────────
+
+def settings_menu(console: Console, config: dict[str, Any]) -> dict[str, Any]:
+    """Full settings editor. Returns updated config dict."""
+    while True:
+        # Build display
+        fast = config.get("fast_model", "") or "none (single-model mode)"
+        embed = config.get("embed_model", "") or "same as main model"
+        frontier = config.get("frontier_api_key", "") or "not configured"
+        if frontier and frontier != "not configured":
+            frontier = frontier[:8] + "..." + frontier[-4:]
+
         items = [
-            f"Max Steps per Phase: {config.get('max_steps', 15)}",
-            f"Max Context Tokens: {config.get('ctx_tokens', 8192)}",
-            f"ToolRAG Top-K: {config.get('toolrag_k', 3)}",
-            f"[back] Done",
+            f"Max Steps per Phase:   {config.get('max_steps', 15)}",
+            f"Max Context Tokens:    {config.get('ctx_tokens', 8192)}",
+            f"Fast Model (dual):     {fast}",
+            f"Embedding Model:       {embed}",
+            f"Frontier API Key:      {frontier}",
+            f"Frontier Model:        {config.get('frontier_model', 'claude-sonnet-4-20250514')}",
+            f"Frontier URL:          {config.get('frontier_url', 'https://api.anthropic.com/v1')}",
+            "Done",
         ]
 
-        choice = arrow_select(console, "Settings", items)
+        descs = [
+            "Total budget = 5x this value. Higher = more thorough, slower",
+            "LLM context window size. Match your model's max context",
+            "Small model for tool execution + compression (saves tokens)",
+            "Model for ToolRAG similarity search",
+            "Optional API key for frontier model escalation on hard tasks",
+            "Which frontier model to use when escalating",
+            "API endpoint for frontier model (Anthropic, OpenAI, etc.)",
+            "",
+        ]
 
-        if choice == -1 or choice == 3:
+        choice = arrow_select(console, "Settings", items, descs)
+
+        if choice == -1 or choice == 7:
             return config
 
         if choice == 0:
-            values = ["5", "10", "15", "20", "30"]
-            sel = arrow_select(console, "Max Steps per Phase", values)
+            values = ["5", "10", "15", "20", "30", "50"]
+            sel = arrow_select(console, "Max Steps per Phase", values,
+                              ["Quick scan", "Light", "Default", "Thorough", "Deep", "Exhaustive"])
             if sel >= 0:
                 config["max_steps"] = int(values[sel])
 
         elif choice == 1:
-            values = ["4096", "8192", "16384", "32768"]
-            sel = arrow_select(console, "Max Context Tokens", values)
+            values = ["4096", "8192", "16384", "32768", "65536", "131072"]
+            sel = arrow_select(console, "Max Context Tokens", values,
+                              ["4K (small models)", "8K (default)", "16K", "32K (recommended)", "64K", "128K (large context)"])
             if sel >= 0:
                 config["ctx_tokens"] = int(values[sel])
 
         elif choice == 2:
-            values = ["2", "3", "4", "5"]
-            sel = arrow_select(console, "ToolRAG Top-K (tools per step)", values)
-            if sel >= 0:
-                config["toolrag_k"] = int(values[sel])
+            console.clear()
+            val = _text_input(console, "Fast model name (empty to disable)", config.get("fast_model", ""))
+            config["fast_model"] = val
 
+        elif choice == 3:
+            console.clear()
+            val = _text_input(console, "Embedding model name (empty for same as main)", config.get("embed_model", ""))
+            config["embed_model"] = val
+
+        elif choice == 4:
+            console.clear()
+            val = _text_input(console, "Frontier API key (empty to disable)", "")
+            if val:
+                config["frontier_api_key"] = val
+
+        elif choice == 5:
+            console.clear()
+            val = _text_input(console, "Frontier model name", config.get("frontier_model", "claude-sonnet-4-20250514"))
+            config["frontier_model"] = val
+
+        elif choice == 6:
+            console.clear()
+            val = _text_input(console, "Frontier API URL", config.get("frontier_url", "https://api.anthropic.com/v1"))
+            config["frontier_url"] = val
+
+
+# ── Profile management ──────────────────────────────────────────────────
+
+def _profile_summary(config: dict[str, Any]) -> str:
+    """One-line summary of a config profile."""
+    target = config.get("target", "?")
+    model = config.get("model", "?")
+    url = config.get("url", "auto")
+    steps = config.get("max_steps", 15)
+    fast = config.get("fast_model", "")
+    parts = [f"{target}", f"model={model}", f"steps={steps}"]
+    if fast:
+        parts.append(f"fast={fast}")
+    return " | ".join(parts)
+
+
+def profiles_menu(console: Console) -> dict[str, Any] | None:
+    """Manage saved profiles. Returns a config to use, or None."""
+    profiles = _load_profiles()
+
+    # Filter out __last__
+    named = {k: v for k, v in profiles.items() if k != "__last__"}
+
+    if not named:
+        console.clear()
+        console.print("\n[yellow]No saved profiles yet.[/yellow]")
+        console.print("[dim]Complete a hunt setup to save a profile.[/dim]")
+        console.print("\n[dim]Press any key...[/dim]")
+        read_key()
+        return None
+
+    items = []
+    descs = []
+    keys = list(named.keys())
+    for name in keys:
+        items.append(f"{name}")
+        descs.append(_profile_summary(named[name]))
+
+    items.extend(["Delete a profile", "Back"])
+
+    choice = arrow_select(console, "Saved Profiles", items, descs)
+
+    if choice == -1 or choice == len(keys) + 1:
+        return None
+
+    if choice == len(keys):
+        # Delete
+        del_choice = arrow_select(console, "Delete which profile?",
+                                  keys + ["Cancel"])
+        if del_choice >= 0 and del_choice < len(keys):
+            del profiles[keys[del_choice]]
+            _save_profiles(profiles)
+            console.print(f"[yellow]Deleted profile: {keys[del_choice]}[/yellow]")
+            console.print("[dim]Press any key...[/dim]")
+            read_key()
+        return None
+
+    return named[keys[choice]]
+
+
+def _save_profile_prompt(console: Console, config: dict[str, Any]) -> None:
+    """Ask user if they want to save this config as a named profile."""
+    choice = arrow_select(console, "Save this configuration as a profile?", [
+        "Yes - save for quick reuse",
+        "No - just run this time",
+    ])
+    if choice == 0:
+        console.clear()
+        name = _text_input(console, "Profile name", config.get("target", "default"))
+        if name:
+            profiles = _load_profiles()
+            profiles[name] = config
+            _save_profiles(profiles)
+            console.print(f"[green]Saved profile: {name}[/green]")
+
+
+# ── Main menu ───────────────────────────────────────────────────────────
 
 def main_menu(console: Console) -> dict[str, Any] | None:
-    """Main interactive menu. Returns run config or None to exit."""
+    """Main interactive menu. Returns run config or None to exit.
+
+    TUI-first experience: no CLI args needed. All configuration happens here.
+    Configs are saved and loaded automatically.
+    """
+    # Default config
     config: dict[str, Any] = {
         "max_steps": 15,
         "ctx_tokens": 8192,
-        "toolrag_k": 3,
+        "fast_model": "",
+        "embed_model": "",
+        "frontier_api_key": os.getenv("FRONTIER_API_KEY", ""),
+        "frontier_model": os.getenv("FRONTIER_MODEL", "claude-sonnet-4-20250514"),
+        "frontier_url": os.getenv("FRONTIER_URL", "https://api.anthropic.com/v1"),
     }
+
+    # Load last used config as defaults
+    last = _get_last_used()
+    if last:
+        for k, v in last.items():
+            if k != "target":  # Don't pre-fill target
+                config[k] = v
 
     while True:
         console.clear()
+
+        # Banner
         console.print(Panel(
             "[bold red]Project Triage v4[/bold red]\n"
-            "[dim]Universal Agentic Security Testing[/dim]",
+            "[dim]Autonomous Hypothesis-Driven Pentesting Agent[/dim]\n"
+            "[dim]46K lines | 36 tools | 19 brain modules | 100% local[/dim]",
             border_style="red",
             padding=(1, 4),
         ))
 
-        choice = arrow_select(console, "Main Menu", [
-            "Start Hunt (select provider + model + target)",
-            "Scan Providers (check what's running)",
-            "Browse Models (curated model database)",
+        # Show last used config if available
+        last_info = ""
+        if last and last.get("target"):
+            last_info = f" [dim](last: {last['target']} / {last.get('model', '?')})[/dim]"
+
+        # Check for saved profiles
+        profiles = _load_profiles()
+        named_count = len({k for k in profiles if k != "__last__"})
+
+        menu_items = [
+            f"New Hunt{last_info}",
+        ]
+        menu_descs = [
+            "Select provider, model, and target - full setup",
+        ]
+
+        # Quick re-run option if we have a last config
+        if last and last.get("target") and last.get("url") and last.get("model"):
+            menu_items.insert(0, f"Quick Hunt: {last['target']} ({last.get('model', '?')})")
+            menu_descs.insert(0, "Re-run last hunt with same settings")
+
+        if named_count > 0:
+            menu_items.append(f"Saved Profiles ({named_count})")
+            menu_descs.append("Load a saved hunt configuration")
+
+        menu_items.extend([
+            "Scan Providers",
+            "Browse Models",
             "Settings",
             "Exit",
         ])
+        menu_descs.extend([
+            "Check which LLM backends are running",
+            "Explore the curated model database",
+            "Configure steps, context, dual-model, frontier escalation",
+            "",
+        ])
 
-        if choice == -1 or choice == 4:
+        choice = arrow_select(console, "Main Menu", menu_items, menu_descs)
+
+        if choice == -1:
             return None
 
-        if choice == 0:
-            # Provider + model selection
-            result = provider_select_menu(console)
-            if not result:
-                continue
-            url, model = result
-            config["url"] = url
-            config["model"] = model
+        selected = menu_items[choice]
 
-            # Target input
-            console.clear()
-            console.print("\n[bold]Enter target URL or domain:[/bold] ", end="")
-            target = input().strip()
-            if not target:
-                continue
-            config["target"] = target
-            return config
+        # Handle "Exit"
+        if selected == "Exit":
+            return None
 
-        elif choice == 1:
-            # Scan providers
+        # Handle "Quick Hunt"
+        if selected.startswith("Quick Hunt:"):
+            _save_last_used(last)
+            return last
+
+        # Handle "New Hunt"
+        if selected.startswith("New Hunt"):
+            result = _new_hunt_flow(console, config)
+            if result:
+                _save_last_used(result)
+                _save_profile_prompt(console, result)
+                return result
+
+        # Handle "Saved Profiles"
+        elif selected.startswith("Saved Profiles"):
+            profile = profiles_menu(console)
+            if profile:
+                # Allow editing target before running
+                console.clear()
+                console.print(Panel(
+                    f"[bold]Model:[/bold] {profile.get('model', '?')}\n"
+                    f"[bold]URL:[/bold] {profile.get('url', 'auto')}\n"
+                    f"[bold]Steps:[/bold] {profile.get('max_steps', 15)}\n"
+                    f"[bold]Context:[/bold] {profile.get('ctx_tokens', 8192)}\n"
+                    f"[bold]Fast Model:[/bold] {profile.get('fast_model', 'none')}\n",
+                    title="Profile Settings",
+                    border_style="cyan",
+                ))
+                target = _text_input(console, "Target URL or domain", profile.get("target", ""))
+                if target:
+                    profile["target"] = target
+                    _save_last_used(profile)
+                    return profile
+
+        # Handle "Scan Providers"
+        elif selected == "Scan Providers":
             console.clear()
-            from main import _scan_providers
-            _scan_providers(console)
-            console.print("\n[dim]Press any key to continue...[/dim]")
+            console.print("\n[dim]Scanning for LLM providers...[/dim]\n")
+            available = _scan_providers()
+            if not available:
+                console.print("[red]No LLM providers detected.[/red]")
+                console.print("[dim]Start one of: ollama serve, vllm serve, LM Studio[/dim]")
+            else:
+                table = Table(title="Detected LLM Providers", box=box.ROUNDED)
+                table.add_column("Provider", style="bold")
+                table.add_column("Models", style="cyan")
+                table.add_column("Embeddings")
+                for url, info in available:
+                    models_str = ", ".join(info.models[:5])
+                    if len(info.models) > 5:
+                        models_str += f" (+{len(info.models) - 5})"
+                    embed = "[green]yes[/green]" if info.supports_embeddings else "[red]no[/red]"
+                    table.add_row(info.name, models_str, embed)
+                console.print(table)
+            console.print("\n[dim]Press any key...[/dim]")
             read_key()
 
-        elif choice == 2:
-            # Browse models
+        # Handle "Browse Models"
+        elif selected == "Browse Models":
             model_select_menu(console)
 
-        elif choice == 3:
-            # Settings
+        # Handle "Settings"
+        elif selected == "Settings":
             config = settings_menu(console, config)
+
+
+def _new_hunt_flow(console: Console, config: dict[str, Any]) -> dict[str, Any] | None:
+    """Full new hunt setup: provider -> model -> dual model -> target."""
+    # Step 1: Provider + model
+    result = provider_select_menu(console)
+    if not result:
+        return None
+    url, model = result
+    config["url"] = url
+    config["model"] = model
+
+    # Step 2: Dual-model mode
+    console.clear()
+    dual_choice = arrow_select(console, "Dual-Model Mode", [
+        "Single model (simpler, uses more tokens)",
+        "Dual model (recommended - big thinks, small executes)",
+        "Custom (choose your own fast + embed models)",
+    ], [
+        f"Use {model} for everything",
+        f"Use {model} for reasoning, auto-pick small model for execution",
+        "Manually specify fast and embedding models",
+    ])
+
+    if dual_choice == 1:
+        # Auto-pick fast model
+        config["fast_model"] = "qwen3:4b"
+        config["embed_model"] = "nomic-embed-text"
+    elif dual_choice == 2:
+        console.clear()
+        config["fast_model"] = _text_input(console, "Fast model name", "qwen3:4b")
+        config["embed_model"] = _text_input(console, "Embedding model name", "nomic-embed-text")
+    else:
+        config["fast_model"] = ""
+        config["embed_model"] = ""
+
+    # Step 3: Intensity
+    console.clear()
+    intensity = arrow_select(console, "Hunt Intensity", [
+        "Quick Scan (5 steps/phase, ~10 min)",
+        "Standard (15 steps/phase, ~30 min)",
+        "Thorough (30 steps/phase, ~1 hr)",
+        "Deep (50 steps/phase, ~2+ hrs)",
+    ], [
+        "Fast surface-level check",
+        "Balanced coverage vs speed (default)",
+        "Full hypothesis exploration",
+        "Exhaustive - test everything",
+    ])
+    if intensity >= 0:
+        steps_map = [5, 15, 30, 50]
+        config["max_steps"] = steps_map[intensity]
+
+    # Step 4: Context window
+    console.clear()
+    ctx_choice = arrow_select(console, "Context Window", [
+        "8K (default, works with any model)",
+        "16K",
+        "32K (recommended for 32B+ models)",
+        "65K",
+        "128K (large context models only)",
+    ])
+    if ctx_choice >= 0:
+        ctx_map = [8192, 16384, 32768, 65536, 131072]
+        config["ctx_tokens"] = ctx_map[ctx_choice]
+
+    # Step 5: Target
+    console.clear()
+    target = _text_input(console, "Target URL or domain")
+    if not target:
+        return None
+    config["target"] = target
+
+    # Step 6: Confirm
+    console.clear()
+    fast_str = config.get("fast_model", "") or "none"
+    embed_str = config.get("embed_model", "") or "same as main"
+
+    console.print(Panel(
+        f"[bold]Target:[/bold]      {target}\n"
+        f"[bold]Model:[/bold]       {model}\n"
+        f"[bold]Fast Model:[/bold]  {fast_str}\n"
+        f"[bold]Embed Model:[/bold] {embed_str}\n"
+        f"[bold]Steps:[/bold]       {config.get('max_steps', 15)} per phase ({config.get('max_steps', 15) * 5} total)\n"
+        f"[bold]Context:[/bold]     {config.get('ctx_tokens', 8192)} tokens\n"
+        f"[bold]Provider:[/bold]    {url}",
+        title="Hunt Configuration",
+        border_style="green",
+    ))
+
+    confirm = arrow_select(console, "Ready?", [
+        "Start Hunt",
+        "Edit Settings",
+        "Cancel",
+    ])
+
+    if confirm == 0:
+        return config
+    elif confirm == 1:
+        config = settings_menu(console, config)
+        return config
+    return None
