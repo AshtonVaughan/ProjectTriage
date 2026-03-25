@@ -106,6 +106,19 @@ from intel.hackerone import HackerOneImporter
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
 
+# Normalize hypothesis scores from mixed types to ints (1-10)
+_SCORE_MAP = {"critical": 10, "high": 8, "medium": 6, "low": 4, "none": 1}
+
+def _to_int_score(val: Any, default: int = 5) -> int:
+    """Convert a hypothesis score to int 1-10. Handles str, float, int."""
+    if isinstance(val, int):
+        return max(1, min(10, val))
+    if isinstance(val, float):
+        return max(1, min(10, int(val * 10) if val <= 1.0 else int(val)))
+    if isinstance(val, str):
+        return _SCORE_MAP.get(val.lower(), default)
+    return default
+
 
 class Agent:
     """Hypothesis-driven ReAct agent with persistent world model.
@@ -1319,10 +1332,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "confusion_attack"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 9),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 9),
-                    effort=h.get("effort", 4),
+                    novelty=_to_int_score(h.get("novelty", 9)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 9)),
+                    effort=_to_int_score(h.get("effort", 4)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1380,8 +1393,8 @@ class Agent:
             auth_context = {}
             if self.auth_context:
                 auth_context = {
-                    "roles": self.auth_context.get_roles(),
-                    "tokens": self.auth_context.get_token_summary(),
+                    "roles": [s.role for s in self.auth_context.sessions.values()],
+                    "tokens": {n: bool(s.jwt_token) for n, s in self.auth_context.sessions.items()},
                 }
 
             # Generate IDOR tests
@@ -1561,10 +1574,10 @@ class Agent:
                     endpoint=h.get("endpoint", target),
                     technique=h.get("technique", "scale_discovery"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 6),
-                    exploitability=h.get("exploitability", 5),
-                    impact=h.get("impact", 7),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 6)),
+                    exploitability=_to_int_score(h.get("exploitability", 5)),
+                    impact=_to_int_score(h.get("impact", 7)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1799,13 +1812,13 @@ class Agent:
             created = []
             for h in hyp_dicts:
                 hyp = self.hypothesis_engine.create(
-                    endpoint=h.get("endpoint", url),
-                    technique=h.get("technique", f"domain_{domain}"),
+                    endpoint=h.get("target", url),
+                    technique=h.get("category", f"domain_{domain}"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 8),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 4),
+                    novelty=_to_int_score(h.get("novelty", 8)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", h.get("severity", 8))),
+                    effort=_to_int_score(h.get("effort", 4)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2609,7 +2622,7 @@ class Agent:
     def _detect_crown_jewels(self, target: str) -> None:
         """Use LLM to auto-detect the target's crown jewels and boost attack graph scores."""
         try:
-            from prompts import CROWN_JEWELS_PROMPT
+            from core.prompts import CROWN_JEWELS_PROMPT
             import json as _json
 
             # Build context from what we know

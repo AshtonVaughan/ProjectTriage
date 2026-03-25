@@ -178,35 +178,46 @@ class WebSocketTester:
         parsed = urlparse(target_url)
         base_ws = f"wss://{parsed.netloc}" if parsed.scheme == "https" else f"ws://{parsed.netloc}"
 
-        # Common WebSocket paths
-        common_paths = [
-            "/ws", "/websocket", "/socket", "/live", "/stream",
-            "/realtime", "/events", "/notifications", "/chat",
-            "/socket.io/?EIO=4&transport=websocket",
-            "/graphql",
-            "/cable",  # ActionCable (Rails)
-            "/hub",  # SignalR
-        ]
+        # Only add common WebSocket paths if there's evidence of WebSocket usage
+        # in JS content or endpoint list. Blindly guessing paths wastes the budget.
+        has_ws_evidence = False
+        if js_content:
+            ws_keywords = ["websocket", "socket.io", "ws://", "wss://", "WebSocket(",
+                          "io.connect", "ActionCable", "signalr", "sockjs"]
+            has_ws_evidence = any(kw.lower() in js_content.lower() for kw in ws_keywords)
+        if endpoints:
+            has_ws_evidence = has_ws_evidence or any(
+                any(kw in ep.lower() for kw in ["socket", "ws", "cable", "hub"])
+                for ep in endpoints
+            )
 
-        for path in common_paths:
-            url = f"{base_ws}{path}"
-            protocol = "websocket"
-            if "socket.io" in path:
-                protocol = "socket.io"
-            elif "graphql" in path:
-                protocol = "graphql-ws"
-            elif "cable" in path:
-                protocol = "actioncable"
-            elif "hub" in path:
-                protocol = "signalr"
+        if has_ws_evidence:
+            common_paths = [
+                "/ws", "/websocket", "/socket",
+                "/socket.io/?EIO=4&transport=websocket",
+                "/graphql",
+                "/cable",
+                "/hub",
+            ]
+            for path in common_paths:
+                url = f"{base_ws}{path}"
+                protocol = "websocket"
+                if "socket.io" in path:
+                    protocol = "socket.io"
+                elif "graphql" in path:
+                    protocol = "graphql-ws"
+                elif "cable" in path:
+                    protocol = "actioncable"
+                elif "hub" in path:
+                    protocol = "signalr"
 
-            found.append(WSEndpoint(
-                url=url,
-                protocol=protocol,
-                auth_mechanism="unknown",
-                origin_validated=False,
-                csrf_protected=False,
-            ))
+                found.append(WSEndpoint(
+                    url=url,
+                    protocol=protocol,
+                    auth_mechanism="unknown",
+                    origin_validated=False,
+                    csrf_protected=False,
+                ))
 
         # Extract from JS content
         if js_content:
