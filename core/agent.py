@@ -100,6 +100,8 @@ from brain.lats_explorer import LATSExplorer
 from brain.curriculum import CurriculumManager
 from brain.escalation_router import EscalationRouter
 from brain.data_manager import DataManager
+from brain.scale_model import ScaleModel
+from intel.hackerone import HackerOneImporter
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
@@ -179,6 +181,8 @@ class Agent:
         self.curriculum = CurriculumManager(config.data_dir)
         self.escalation = EscalationRouter(provider, config)
         self.data_mgr = DataManager(config.data_dir)
+        self.scale_model = ScaleModel()
+        self.h1_importer = HackerOneImporter(config.data_dir)
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -288,6 +292,10 @@ class Agent:
         # Program intelligence - read scope, payouts, recent additions FIRST
         self.console.print("\n[bold cyan]>>> Program Intelligence[/bold cyan]")
         self._run_program_intel(target)
+
+        # HackerOne program import - load saved program data if available
+        self.console.print("\n[bold cyan]>>> HackerOne Program Data[/bold cyan]")
+        self._load_program_data(target)
 
         # Start OOB callback session for blind vulnerability confirmation
         self.console.print("\n[bold cyan]>>> OOB Callback Session[/bold cyan]")
@@ -419,6 +427,10 @@ class Agent:
         # Curriculum-guided hypothesis ordering
         self.console.print("[bold cyan]>>> Curriculum Learning[/bold cyan]")
         self._run_curriculum_analysis(target)
+
+        # Application scale analysis - understand target width and depth
+        self.console.print("[bold cyan]>>> Application Scale Analysis[/bold cyan]")
+        self._run_scale_analysis(target)
 
         # If target model is fresh, skip basic recon hypotheses
         if not self.target_model.is_stale and self.target_model.has_recon:
@@ -1471,6 +1483,96 @@ class Agent:
                 )
         except Exception as e:
             self.console.print(f"[dim]Curriculum analysis skipped: {e}[/dim]")
+
+    def _load_program_data(self, target: str) -> None:
+        """Load HackerOne program data if available."""
+        try:
+            domain = target.replace("https://", "").replace("http://", "").split("/")[0]
+            handle = domain.split(".")[-2] if "." in domain else domain
+
+            # Check for saved program data
+            profile = self.h1_importer.load_program(handle)
+            if profile:
+                self.console.print(
+                    f"[cyan]Loaded program: {profile.name} | "
+                    f"{len(profile.in_scope)} in-scope assets | "
+                    f"{'Bounties' if profile.offers_bounties else 'No bounties'}[/cyan]"
+                )
+                if profile.recent_scope_additions:
+                    self.console.print(
+                        f"[bold yellow]>>> {len(profile.recent_scope_additions)} recently added assets "
+                        f"(priority targets!)[/bold yellow]"
+                    )
+                # Store scope context for the agent's prompts
+                if self.world:
+                    self.world.add_fact("program_scope", self.h1_importer.generate_scope_context(profile))
+                    if profile.bounty_table.critical_max:
+                        self.world.add_fact("bounty_table", profile.bounty_table.to_dict())
+            else:
+                self.console.print(f"[dim]No saved program data for {handle} (use Import Program in TUI)[/dim]")
+        except Exception as e:
+            self.console.print(f"[dim]Program data load skipped: {e}[/dim]")
+
+    def _run_scale_analysis(self, target: str) -> None:
+        """Analyze application scale and generate hypotheses for unexplored surfaces."""
+        if not self.hypothesis_engine or not self.attack_graph:
+            return
+        try:
+            tech_stack = self.world.tech_stack if self.world else {}
+
+            # Count known subdomains and endpoints
+            subdomain_count = 0
+            endpoint_count = 0
+            if self.target_model and self.target_model.data:
+                endpoints = self.target_model.data.get("endpoints", [])
+                endpoint_count = len(endpoints)
+                subdomains = self.target_model.data.get("subdomains", [])
+                subdomain_count = len(subdomains)
+
+            # Get bounty info if available
+            program_info = None
+            if self.world:
+                bounty = self.world._data.get("bounty_table")
+                if bounty:
+                    program_info = {"bounty_max": bounty.get("critical_max", 0)}
+
+            scale = self.scale_model.estimate_scale(
+                tech_stack, subdomain_count, endpoint_count, program_info
+            )
+            self.console.print(
+                f"[cyan]Scale: {scale.scale_tier} | "
+                f"Est. {scale.estimated_endpoints} endpoints | "
+                f"Tested: {endpoint_count} | "
+                f"Attack surface score: {scale.attack_surface_score}/100[/cyan]"
+            )
+
+            # Generate scale-based hypotheses
+            hyp_dicts = self.scale_model.get_scale_hypotheses(
+                tech_stack, subdomain_count, endpoint_count
+            )
+            # Add environment discovery hypotheses
+            domain = target.replace("https://", "").replace("http://", "").split("/")[0]
+            env_hyps = self.scale_model.get_environment_hypotheses(domain)
+            hyp_dicts.extend(env_hyps)
+
+            created = []
+            for h in hyp_dicts:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=h.get("endpoint", target),
+                    technique=h.get("technique", "scale_discovery"),
+                    description=h.get("description", ""),
+                    novelty=h.get("novelty", 6),
+                    exploitability=h.get("exploitability", 5),
+                    impact=h.get("impact", 7),
+                    effort=h.get("effort", 3),
+                )
+                if hyp:
+                    created.append(hyp)
+            if created:
+                self.attack_graph.add_hypotheses(created)
+                self.console.print(f"[cyan]{len(created)} scale-based hypotheses generated[/cyan]")
+        except Exception as e:
+            self.console.print(f"[dim]Scale analysis skipped: {e}[/dim]")
 
     def _run_osint_deep(self, target: str) -> None:
         """Run deep OSINT: cloud assets, staging envs, source maps, JS secrets."""

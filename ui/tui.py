@@ -520,12 +520,14 @@ def main_menu(console: Console) -> dict[str, Any] | None:
             menu_descs.append("Load a saved hunt configuration")
 
         menu_items.extend([
+            "Import Program",
             "Scan Providers",
             "Browse Models",
             "Settings",
             "Exit",
         ])
         menu_descs.extend([
+            "Import HackerOne/Bugcrowd program scope and bounty table",
             "Check which LLM backends are running",
             "Explore the curated model database",
             "Configure steps, context, dual-model, frontier escalation",
@@ -576,6 +578,35 @@ def main_menu(console: Console) -> dict[str, Any] | None:
                     profile["target"] = target
                     _save_last_used(profile)
                     return profile
+
+        # Handle "Import Program"
+        elif selected == "Import Program":
+            console.clear()
+            console.print("\n[bold cyan]Import Bug Bounty Program[/bold cyan]")
+            console.print("[dim]Enter a HackerOne or Bugcrowd program handle or URL[/dim]\n")
+            handle = _text_input(console, "Program (e.g. 'shopify' or 'https://hackerone.com/shopify')")
+            if handle:
+                try:
+                    from intel.hackerone import HackerOneImporter
+                    importer = HackerOneImporter()
+                    console.print(f"\n[dim]Fetching program data for: {handle}...[/dim]")
+                    profile = importer.import_program(handle)
+                    console.clear()
+                    console.print(Panel(
+                        importer.generate_scope_context(profile),
+                        title=f"[bold]{profile.name}[/bold] ({profile.platform})",
+                        border_style="green",
+                    ))
+                    console.print(f"\n[green]Saved to data/programs/{profile.handle}.json[/green]")
+
+                    # Show saved programs
+                    saved = importer.list_saved_programs()
+                    if len(saved) > 1:
+                        console.print(f"[dim]{len(saved)} programs saved total[/dim]")
+                except Exception as e:
+                    console.print(f"\n[red]Error importing program: {e}[/red]")
+                console.print("\n[dim]Press any key...[/dim]")
+                read_key()
 
         # Handle "Scan Providers"
         elif selected == "Scan Providers":
