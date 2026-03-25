@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from utils import run_cmd
+from utils.utils import run_cmd
 
 
 # ---------------------------------------------------------------------------

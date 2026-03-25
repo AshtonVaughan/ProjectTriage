@@ -676,61 +676,123 @@ Key research-backed decisions:
 
 ```
 ProjectTriage/
-    main.py                 # Entry point, CLI, tool registration
-    agent.py                # Core ReAct agent loop (2,668 lines)
-    config.py               # Configuration and tool path resolution
-    provider.py             # Universal LLM backend adapter
-    prompts.py              # System prompts and templates
+    main.py                          # Entry point, CLI, tool registration
 
-    # Brain modules (19 reasoning engines)
-    assumption_engine.py    # Developer assumption violation
-    intent_model.py         # Business logic intent modeling
-    confusion_engine.py     # Orange Tsai confusion attacks
-    idor_engine.py          # IDOR/BOLA systematic testing
-    edge_analyzer.py        # Inter-component boundary testing
-    arch_analyzer.py        # Architectural anti-pattern detection
-    client_analyzer.py      # Client-side attack surface analysis
-    chain_engine.py         # Vulnerability chain reasoning
-    coverage_asymmetry.py   # Under-tested surface prioritization
-    domain_knowledge.py     # Industry-specific attack patterns
-    self_reflect.py         # Agent self-correction
-    mcts_explorer.py        # Monte Carlo Tree Search
-    lats_explorer.py        # Language Agent Tree Search
-    procedural_memory.py    # Cross-session skill learning
-    curriculum.py           # Difficulty-aware progression
-    state_machine.py        # Application state machine extraction
-    workflow_tester.py      # Multi-step flow testing
-    perceptor.py            # Observation compression
-    data_manager.py         # Technology-aware data selection
-    escalation_router.py    # Optional frontier model escalation
+    core/                            # Agent loop and infrastructure
+        agent.py                     #   Main ReAct agent loop (2,668 lines)
+        config.py                    #   Configuration and tool path resolution
+        provider.py                  #   Universal LLM backend adapter (Ollama, vLLM, etc.)
+        tool_registry.py             #   ToolRAG - retrieves relevant tools per step
+        prompts.py                   #   System prompts and ReAct templates
+        context.py                   #   Context window management
+        session.py                   #   Session recording and replay
+        scope.py                     #   Scope enforcement (in/out of scope)
+        planner.py                   #   Step planning
+        cost_tracker.py              #   Token and cost tracking
+        parallel.py                  #   Parallel recon orchestration
+        orchestrator.py              #   Multi-agent specialist coordination
 
-    # Execution tools (36 tools across 26 modules)
-    tools/
-        recon.py             # nmap, subfinder, httpx
-        discovery.py         # katana, gau, waybackurls, feroxbuster, kiterunner, arjun, gowitness, fingerprintx
-        scanner.py           # nuclei scanning
-        exploit.py           # sqlmap, http_payload
-        saml.py              # SAML SSO attacks (5 tools)
-        oauth.py             # OAuth/OIDC flow attacks (6 tools)
-        llm_attacks.py       # AI/LLM-specific attacks (6 tools)
-        jwt.py               # JWT analysis and attacks
-        graphql.py           # GraphQL introspection and auth testing
-        race.py              # Race condition testing
-        desync.py            # HTTP request smuggling
-        cache_poison.py      # Web cache poisoning
-        cloud_meta.py        # Cloud metadata SSRF
-        dns_rebind.py        # DNS rebinding SSRF bypass (3 tools)
-        xss.py               # XSS scanning
-        cors.py              # CORS misconfiguration
-        crlf.py              # CRLF injection
-        ssti.py              # Server-Side Template Injection
-        proto_pollution.py   # Prototype pollution
-        prompt_inject.py     # LLM prompt injection
-        subdomain_takeover.py # Dangling CNAME detection
-        crawler.py           # Web crawling
-        fuzzer_tool.py       # Directory and parameter fuzzing
+    brain/                           # Reasoning and analysis engines (19 modules)
+        assumption_engine.py         #   "What did the developer assume?"
+        intent_model.py              #   "What was this feature supposed to do?"
+        confusion_engine.py          #   Confusion attacks (Orange Tsai 2024)
+        idor_engine.py               #   Systematic IDOR/BOLA testing
+        edge_analyzer.py             #   Inter-component boundary testing
+        arch_analyzer.py             #   Architectural anti-pattern detection
+        client_analyzer.py           #   PostMessage, CSWSH, DOM clobbering
+        chain_analyzer.py            #   Template-based chain analysis
+        chain_engine.py              #   Capability-based chain reasoning
+        coverage_asymmetry.py        #   Under-tested surface prioritization
+        domain_knowledge.py          #   Industry-specific attack patterns
+        self_reflect.py              #   Agent self-correction (CoVe + Reflexion)
+        mcts_explorer.py             #   Monte Carlo Tree Search
+        lats_explorer.py             #   Language Agent Tree Search (ICML 2024)
+        procedural_memory.py         #   Cross-session skill learning (SQLite)
+        curriculum.py                #   Difficulty-aware progression
+        state_machine.py             #   App state machine extraction (XState/Redux)
+        workflow_tester.py           #   Multi-step business logic testing
+        world_model.py               #   Persistent structured fact store
+        tech_fingerprint.py          #   Framework/CDN/WAF detection
+        dom_analyzer.py              #   DOM XSS and client-side vuln detection
+        websocket_tester.py          #   WebSocket protocol testing
+        perceptor.py                 #   Observation compression (51% token reduction)
+        agot_reasoner.py             #   Adaptive Graph of Thoughts
+        data_manager.py              #   Technology-aware wordlist selection
+        escalation_router.py         #   Optional frontier model escalation
 
-    # Data assets
+    intel/                           # Reconnaissance and intelligence gathering
+        source_intel.py              #   GitHub, Wayback, CNAME, API specs
+        osint_engine.py              #   Cloud assets, staging envs, source maps
+        infra_scanner.py             #   Infrastructure-class target identification
+        js_analyzer.py               #   JavaScript bundle analysis
+        program_intel.py             #   Bug bounty program-aware testing
+        supply_chain.py              #   Dependency and build artifact security
+        source_analyzer.py           #   Source code analysis (exposed repos)
+        monitor_mode.py              #   Continuous attack surface monitoring
+        interactsh_client.py         #   OOB callback infrastructure
+        h2_desync.py                 #   HTTP/2-specific request smuggling
+        mcp_tester.py                #   MCP/Agentic AI attack surface
+        differential_engine.py       #   Cross-session behavioral comparison
+        fuzzer.py                    #   Smart API and parameter fuzzing
+        campaign_manager.py          #   Multi-session hunt orchestration
+        nuclei_scan.py               #   Nuclei template scanning
+        callback_server.py           #   OOB callback server
+
+    models/                          # Data models and state
+        target_model.py              #   Per-target recon data persistence
+        hypothesis.py                #   Hypothesis creation and scoring
+        attack_graph.py              #   Hypothesis queue and attack graph
+        world_model.py               #   (imported from brain/)
+        evidence.py                  #   Evidence capture dataclasses
+        memory.py                    #   Per-target cross-session memory
+        patterns.py                  #   Cross-target learned patterns
+        knowledge.py                 #   Knowledge base formatting
+        profiles.py                  #   Target profiles and fingerprints
+        auth_context.py              #   Multi-role auth state tracking
+        auth_manager.py              #   Account creation and credential management
+        disclosures.py               #   Disclosure dedup via HackerOne API
+        cvss.py                      #   CVSS scoring
+
+    tools/                           # Execution tools (36 tools, 26 modules)
+        recon.py                     #   nmap, subfinder, httpx
+        discovery.py                 #   katana, gau, waybackurls, feroxbuster, kiterunner, arjun, gowitness, fingerprintx
+        scanner.py                   #   nuclei scanning
+        exploit.py                   #   sqlmap, http_payload
+        saml.py                      #   SAML SSO attacks (5 tools)
+        oauth.py                     #   OAuth/OIDC flow attacks (6 tools)
+        llm_attacks.py               #   AI/LLM-specific attacks (6 tools)
+        jwt.py                       #   JWT analysis and attacks
+        graphql.py                   #   GraphQL introspection and auth
+        race.py                      #   Race condition testing
+        desync.py                    #   HTTP request smuggling
+        cache_poison.py              #   Web cache poisoning
+        cloud_meta.py                #   Cloud metadata SSRF
+        dns_rebind.py                #   DNS rebinding SSRF bypass (3 tools)
+        xss.py                       #   XSS scanning
+        cors.py                      #   CORS misconfiguration
+        crlf.py                      #   CRLF injection
+        ssti.py                      #   Server-Side Template Injection
+        proto_pollution.py           #   Prototype pollution
+        prompt_inject.py             #   LLM prompt injection
+        subdomain_takeover.py        #   Dangling CNAME detection
+        crawler.py                   #   Web crawling
+        fuzzer_tool.py               #   Directory and parameter fuzzing
+
+    ui/                              # Display and reporting
+        tui.py                       #   Interactive terminal UI
+        live_display.py              #   Real-time Rich dashboard
+        report.py                    #   Finding report formatting
+        report_generator.py          #   Automated report generation
+
+    utils/                           # Utilities and helpers
+        db.py                        #   SQLite persistence layer
+        sanitizer.py                 #   Input/output sanitization
+        validator.py                 #   Finding validation
+        quality_gate.py              #   4-layer quality validation
+        evidence_collector.py        #   Automated PoC capture
+        utils.py                     #   Subprocess execution, formatting
+        wordlists.py                 #   Wordlist management
+
     data/
         wordlists/tech_routes.json   # Framework-specific routes, params, WAF bypass
 

@@ -13,11 +13,11 @@ from rich.text import Text
 from rich.columns import Columns
 from rich import box
 
-from models_db import (
+from models.models_db import (
     MODEL_DATABASE, ModelInfo, CATEGORIES,
     get_models_by_category, get_recommended, get_models_for_vram, find_model,
 )
-from provider import Provider, KNOWN_BACKENDS, ProviderInfo
+from core.provider import Provider, KNOWN_BACKENDS, ProviderInfo
 
 
 # Cross-platform key reading

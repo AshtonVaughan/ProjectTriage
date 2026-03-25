@@ -6,9 +6,9 @@ import os
 import tempfile
 from typing import Any
 
-from config import Config
-from tool_registry import Tool
-from utils import run_cmd, sanitize_subprocess_arg
+from core.config import Config
+from core.tool_registry import Tool
+from utils.utils import run_cmd, sanitize_subprocess_arg
 
 
 def nmap_scan(target: str, ports: str = "1-1000", flags: str = "-sV") -> dict[str, Any]:

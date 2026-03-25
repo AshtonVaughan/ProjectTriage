@@ -1,7 +1,7 @@
 """Directory and content fuzzer tool wrapping ffuf/feroxbuster."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 BUILTIN_PATHS: list[str] = [
     "admin", "api", "api/v1", "api/v2", "api/v3", "api/internal",

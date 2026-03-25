@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from config import Config
-from tool_registry import Tool
+from core.config import Config
+from core.tool_registry import Tool
 
 
 def register_discovery_tools(config: Config) -> list[Tool]:

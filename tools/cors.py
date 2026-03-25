@@ -1,7 +1,7 @@
 """CORS misconfiguration scanner."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 CORS_TESTS: list[dict[str, str]] = [
     {"origin": "https://evil.com", "name": "arbitrary_origin"},

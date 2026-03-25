@@ -12,7 +12,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from utils import format_duration as _format_duration
+from utils.utils import format_duration as _format_duration
 
 
 # ---------------------------------------------------------------------------

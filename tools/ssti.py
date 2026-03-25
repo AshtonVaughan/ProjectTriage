@@ -1,7 +1,7 @@
 """SSTI (Server-Side Template Injection) detection and exploitation tool."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 # Engine fingerprinting decision tree
 SSTI_PROBES: list[dict[str, Any]] = [

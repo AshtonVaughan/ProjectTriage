@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from utils import run_cmd
+from utils.utils import run_cmd
 
 log = logging.getLogger(__name__)
 

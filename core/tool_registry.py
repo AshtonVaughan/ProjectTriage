@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from config import Config
+from core.config import Config
 
 
 @dataclass

@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
-from hypothesis import Hypothesis, HypothesisEngine
+from models.hypothesis import Hypothesis, HypothesisEngine
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """CRLF injection scanner."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 CRLF_PAYLOADS: list[str] = [
     "%0d%0aX-Injected: true",

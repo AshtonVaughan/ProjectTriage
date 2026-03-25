@@ -6,7 +6,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any
 
-from db import Database
+from utils.db import Database
 
 
 @dataclass

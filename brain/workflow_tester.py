@@ -22,7 +22,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any
 
-from utils import run_cmd, sanitize_subprocess_arg
+from utils.utils import run_cmd, sanitize_subprocess_arg
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cvss import CVSS, compute_cvss_score
+from models.cvss import CVSS, compute_cvss_score
 
 
 class ReportGenerator:

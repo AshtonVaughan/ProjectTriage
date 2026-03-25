@@ -25,7 +25,7 @@ from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
-from utils import format_duration
+from utils.utils import format_duration
 
 
 # ---------------------------------------------------------------------------

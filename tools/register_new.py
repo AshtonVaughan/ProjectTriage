@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from config import Config
-from tool_registry import Tool
+from core.config import Config
+from core.tool_registry import Tool
 
 
 def register_fuzzer_tools(config: Config) -> list[Tool]:

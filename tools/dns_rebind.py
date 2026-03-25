@@ -22,9 +22,9 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from config import Config
-from tool_registry import Tool
-from utils import sanitize_subprocess_arg
+from core.config import Config
+from core.tool_registry import Tool
+from utils.utils import sanitize_subprocess_arg
 
 
 # ---------------------------------------------------------------------------

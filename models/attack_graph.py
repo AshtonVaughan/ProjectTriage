@@ -12,8 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from db import Database
-from hypothesis import Hypothesis, make_hypothesis_id
+from utils.db import Database
+from models.hypothesis import Hypothesis, make_hypothesis_id
 
 # Keywords used to infer a phase label from hypothesis technique
 _RECON_KEYWORDS = ("subdomain", "port", "enumerate")

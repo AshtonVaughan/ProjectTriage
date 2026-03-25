@@ -10,9 +10,9 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-from config import Config
-from tool_registry import Tool
-from utils import run_cmd, sanitize_subprocess_arg
+from core.config import Config
+from core.tool_registry import Tool
+from utils.utils import run_cmd, sanitize_subprocess_arg
 
 
 # ---------------------------------------------------------------------------

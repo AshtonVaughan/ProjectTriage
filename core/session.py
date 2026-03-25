@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from utils import format_duration as _format_duration
+from utils.utils import format_duration as _format_duration
 
 
 # ---------------------------------------------------------------------------

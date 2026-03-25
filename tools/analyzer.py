@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from tool_registry import Tool
+from core.tool_registry import Tool
 
 
 def analyze_headers(

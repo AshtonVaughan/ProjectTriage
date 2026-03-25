@@ -9,9 +9,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from config import Config
-from provider import Provider, KNOWN_BACKENDS
-from tool_registry import ToolRegistry
+from core.config import Config
+from core.provider import Provider, KNOWN_BACKENDS
+from core.tool_registry import ToolRegistry
 from tools.recon import register_recon_tools
 from tools.scanner import register_scanner_tools
 from tools.exploit import register_exploit_tools
@@ -34,7 +34,7 @@ from tools.saml import register_saml_tools
 from tools.oauth import register_oauth_tools
 from tools.llm_attacks import register_llm_attack_tools
 from tools.dns_rebind import register_dns_rebind_tools
-from agent import Agent
+from core.agent import Agent
 
 
 def build_registry(config: Config) -> ToolRegistry:

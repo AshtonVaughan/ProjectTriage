@@ -1,7 +1,7 @@
 """Active web crawler tool wrapping katana/gospider."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 def crawl(target: str, depth: int = 3, headless: bool = False, timeout: int = 60) -> dict[str, Any]:
     """Crawl a target to discover endpoints, forms, and API calls."""

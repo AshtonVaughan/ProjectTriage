@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from config import Config
-from tool_registry import Tool
-from utils import run_cmd, sanitize_subprocess_arg
+from core.config import Config
+from core.tool_registry import Tool
+from utils.utils import run_cmd, sanitize_subprocess_arg
 
 
 def katana_crawl(

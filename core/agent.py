@@ -32,74 +32,74 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
-from utils import format_duration
+from utils.utils import format_duration
 
-from agot_reasoner import AGoTReasoner
-from arch_analyzer import ArchAnalyzer
-from assumption_engine import AssumptionEngine
-from attack_graph import AttackGraph
-from auth_context import AuthContext
-from campaign_manager import CampaignManager
-from chain_analyzer import ChainAnalyzer
-from chain_engine import ChainEngine
-from config import Config
-from context import ContextManager, Step
-from cost_tracker import CostTracker
-from coverage_asymmetry import CoverageAsymmetryDetector
-from db import Database
-from differential_engine import DifferentialEngine
-from disclosures import DisclosureLookup
-from dom_analyzer import DOMAnalyzer
-from domain_knowledge import DomainKnowledge
-from edge_analyzer import EdgeAnalyzer
-from evidence_collector import EvidenceCollector as AdvancedEvidenceCollector
-from fuzzer import SmartFuzzer
-from h2_desync import H2DesyncTester
-from infra_scanner import InfraScanner
-from interactsh_client import InteractshClient
-from mcp_tester import MCPTester
-from monitor_mode import MonitorMode
-from evidence import EvidenceCapture
-from hypothesis import Hypothesis, HypothesisEngine
-from intent_model import IntentModel
-from js_analyzer import analyze_target as js_analyze_target, integrate_with_target_model
-from knowledge import format_knowledge_context, get_chain_suggestions, PIVOT_RULES, get_methodology
-from mcts_explorer import MCTSExplorer
-from osint_engine import OSINTEngine
-from memory import TargetMemory
-from parallel import parallel_recon
-from patterns import PatternsMemory
-from perceptor import Perceptor
-from program_intel import ProgramIntelligence
-from prompts import SYSTEM_PROMPT, REACT_TEMPLATE
-from provider import Provider, ReActResponse
-from quality_gate import QualityGate
-from report_generator import ReportGenerator
-from sanitizer import sanitize_action, sanitize_inputs
-from scope import Scope
-from self_reflect import SelfReflector
-from source_analyzer import SourceAnalyzer
-from session import SessionRecorder
-from source_intel import SourceIntel
-from state_machine import StateMachineExtractor
-from supply_chain import SupplyChainAnalyzer
-from target_model import TargetModel
-from tech_fingerprint import TechFingerprinter
-from tool_registry import ToolRegistry
-from validator import Validator
-from websocket_tester import WebSocketTester
-from workflow_tester import WorkflowTester
-from world_model import WorldModel
-from live_display import LiveDisplay, print_banner, print_finding_alert, print_hunt_complete
+from brain.agot_reasoner import AGoTReasoner
+from brain.arch_analyzer import ArchAnalyzer
+from brain.assumption_engine import AssumptionEngine
+from models.attack_graph import AttackGraph
+from models.auth_context import AuthContext
+from intel.campaign_manager import CampaignManager
+from brain.chain_analyzer import ChainAnalyzer
+from brain.chain_engine import ChainEngine
+from core.config import Config
+from core.context import ContextManager, Step
+from core.cost_tracker import CostTracker
+from brain.coverage_asymmetry import CoverageAsymmetryDetector
+from utils.db import Database
+from intel.differential_engine import DifferentialEngine
+from models.disclosures import DisclosureLookup
+from brain.dom_analyzer import DOMAnalyzer
+from brain.domain_knowledge import DomainKnowledge
+from brain.edge_analyzer import EdgeAnalyzer
+from utils.evidence_collector import EvidenceCollector as AdvancedEvidenceCollector
+from intel.fuzzer import SmartFuzzer
+from intel.h2_desync import H2DesyncTester
+from intel.infra_scanner import InfraScanner
+from intel.interactsh_client import InteractshClient
+from intel.mcp_tester import MCPTester
+from intel.monitor_mode import MonitorMode
+from models.evidence import EvidenceCapture
+from models.hypothesis import Hypothesis, HypothesisEngine
+from brain.intent_model import IntentModel
+from intel.js_analyzer import analyze_target as js_analyze_target, integrate_with_target_model
+from models.knowledge import format_knowledge_context, get_chain_suggestions, PIVOT_RULES, get_methodology
+from brain.mcts_explorer import MCTSExplorer
+from intel.osint_engine import OSINTEngine
+from models.memory import TargetMemory
+from core.parallel import parallel_recon
+from models.patterns import PatternsMemory
+from brain.perceptor import Perceptor
+from intel.program_intel import ProgramIntelligence
+from core.prompts import SYSTEM_PROMPT, REACT_TEMPLATE
+from core.provider import Provider, ReActResponse
+from utils.quality_gate import QualityGate
+from ui.report_generator import ReportGenerator
+from utils.sanitizer import sanitize_action, sanitize_inputs
+from core.scope import Scope
+from brain.self_reflect import SelfReflector
+from intel.source_analyzer import SourceAnalyzer
+from core.session import SessionRecorder
+from intel.source_intel import SourceIntel
+from brain.state_machine import StateMachineExtractor
+from intel.supply_chain import SupplyChainAnalyzer
+from models.target_model import TargetModel
+from brain.tech_fingerprint import TechFingerprinter
+from core.tool_registry import ToolRegistry
+from utils.validator import Validator
+from brain.websocket_tester import WebSocketTester
+from brain.workflow_tester import WorkflowTester
+from brain.world_model import WorldModel
+from ui.live_display import LiveDisplay, print_banner, print_finding_alert, print_hunt_complete
 # New modules from gap analysis
-from confusion_engine import ConfusionEngine
-from client_analyzer import ClientAnalyzer
-from idor_engine import IDOREngine
-from procedural_memory import ProceduralMemory
-from lats_explorer import LATSExplorer
-from curriculum import CurriculumManager
-from escalation_router import EscalationRouter
-from data_manager import DataManager
+from brain.confusion_engine import ConfusionEngine
+from brain.client_analyzer import ClientAnalyzer
+from brain.idor_engine import IDOREngine
+from brain.procedural_memory import ProceduralMemory
+from brain.lats_explorer import LATSExplorer
+from brain.curriculum import CurriculumManager
+from brain.escalation_router import EscalationRouter
+from brain.data_manager import DataManager
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000

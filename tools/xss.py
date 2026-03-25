@@ -1,7 +1,7 @@
 """XSS automation tool wrapping dalfox."""
 from __future__ import annotations
 from typing import Any
-from utils import run_cmd
+from utils.utils import run_cmd
 
 def scan_xss(target: str, params: str = "", blind_callback: str = "", custom_payload: str = "") -> dict[str, Any]:
     """Scan for XSS vulnerabilities using dalfox or fallback."""

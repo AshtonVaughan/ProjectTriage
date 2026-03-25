@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-from utils import run_cmd
+from utils.utils import run_cmd
 
 
 # ---------------------------------------------------------------------------

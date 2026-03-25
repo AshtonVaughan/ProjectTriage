@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from validator import Validator, ValidatedFinding
+from utils.validator import Validator, ValidatedFinding
 
 
 @dataclass
