@@ -592,16 +592,26 @@ After every finding, the chain analyzer checks if findings combine into somethin
 
 ## GPU Deployment
 
-### VRAM Guide
+### VRAM Guide (March 2026)
 
-| VRAM | Planning Model | Fast Model | Experience |
-|---|---|---|---|
-| **192GB** (B200) | `qwen3:235b` | `qwen3:4b` | Maximum capability |
-| **80GB** (H100 SXM, A100) | `qwen3:235b` | `qwen3:4b` | Frontier reasoning |
-| **48GB** (2x 4090, A6000, RTX 6000) | `qwen3:32b` | `qwen3:4b` | Near-frontier |
-| **24GB** (4090, 3090) | `qwen3:14b` | `qwen3:4b` | Solid reasoning |
-| **16GB** (4080, 4070Ti) | `qwen3:8b` | `qwen3:4b` | Basic reasoning |
-| **8GB** (4070, 3070) | `qwen3:4b` | - | Minimum viable |
+| VRAM | GPU | Planning Model | Fast Model | Experience |
+|---|---|---|---|---|
+| **288GB** | B300 (Blackwell Ultra) | `qwen3.5:397b` (MoE, 17B active) | `qwen3.5:4b` | Beyond frontier - largest open model |
+| **192GB** | B200, B100 | `qwen3.5:122b` (MoE, 10B active) | `qwen3.5:4b` | Frontier reasoning |
+| **141GB** | H200 | `qwen3.5:122b` or `qwen3:235b` | `qwen3.5:4b` | Near-frontier |
+| **80GB** | H100 SXM, A100 80GB | `qwen3.5:27b` or `qwen3:235b` (MoE) | `qwen3.5:4b` | Excellent |
+| **48GB** | 2x 4090, A6000, L40S | `qwen3.5:27b` | `qwen3.5:4b` | Great |
+| **24GB** | RTX 4090, 3090 | `qwen3.5:9b` or `qwen3:14b` | `qwen3.5:4b` | Solid |
+| **16GB** | RTX 4080, 4070Ti | `qwen3.5:9b` (6.6GB) | - | Basic |
+| **8GB** | RTX 4070, 3070 | `qwen3.5:4b` | - | Minimum viable |
+
+**Note:** All models should use abliterated variants for security research. The setup script handles this automatically with `huihui_ai/qwen3.5-abliterated` and `huihui_ai/qwen3-abliterated` models.
+
+**Alternative models worth considering:**
+- `deepseek-v3.2` (671B MoE, 37B active) - strongest open reasoning model, needs 80GB+
+- `llama4-scout` (109B MoE, 17B active, 10M context) - best context window
+- `devstral-small-2` (24B) - coding specialist, beats Qwen3 Coder
+- `mistral-large-3` (675B MoE, 41B active) - strong general reasoning
 
 ### Cloud GPU Providers
 
