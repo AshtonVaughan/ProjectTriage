@@ -450,8 +450,171 @@ class HackerOneImporter:
     def has_api_credentials(self) -> bool:
         return bool(self.api_username and self.api_token)
 
+    def import_from_bountyhound(self, handle: str, bh_db_path: str = "") -> ProgramProfile | None:
+        """Import a program directly from BountyHound's h1-programs.db.
+
+        This is the fastest and most reliable method - BountyHound has 6,340+
+        programs with 39,287 in-scope assets already parsed and stored.
+
+        Args:
+            handle: Program handle (e.g., 'exness', 'shopify')
+            bh_db_path: Path to BountyHound's h1-programs.db. If empty,
+                        checks BOUNTYHOUND_DB env var and common locations.
+
+        Returns:
+            ProgramProfile if found, None otherwise.
+        """
+        import sqlite3
+
+        # Find the BountyHound database
+        if not bh_db_path:
+            bh_db_path = os.getenv("BOUNTYHOUND_DB", "")
+        if not bh_db_path:
+            # Check common locations
+            candidates = [
+                Path.home() / "Desktop" / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+                Path.home() / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+                Path("/root") / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+                Path("bountyhound-agent") / "data" / "h1-programs.db",
+            ]
+            for c in candidates:
+                if c.exists():
+                    bh_db_path = str(c)
+                    break
+
+        if not bh_db_path or not Path(bh_db_path).exists():
+            return None
+
+        try:
+            db = sqlite3.connect(bh_db_path)
+            db.row_factory = sqlite3.Row
+            cur = db.cursor()
+
+            # Find program by handle
+            cur.execute("SELECT * FROM programs WHERE handle = ?", (handle,))
+            prog = cur.fetchone()
+            if not prog:
+                db.close()
+                return None
+
+            profile = ProgramProfile(
+                handle=prog["handle"],
+                name=prog["name"] or prog["handle"],
+                url=prog["url"] or f"https://hackerone.com/{prog['handle']}",
+                platform="hackerone",
+                state=prog["state"] or "open",
+                offers_bounties=bool(prog["offers_bounties"]),
+                offers_swag=bool(prog["offers_swag"]),
+                policy_text=(prog["policy"] or "")[:3000],
+                resolved_report_count=prog["resolved_report_count"] or 0,
+                average_bounty=prog["average_bounty"] or 0,
+                top_bounty=prog["max_bounty"] or 0,
+            )
+
+            # Load in-scope assets
+            cur.execute("SELECT * FROM scopes WHERE program_id = ?", (prog["id"],))
+            for row in cur.fetchall():
+                asset = ScopeAsset(
+                    asset_type=row["asset_type"] or "URL",
+                    identifier=row["asset_identifier"] or "",
+                    eligible_for_bounty=bool(row["eligible_for_bounty"]),
+                    eligible_for_submission=bool(row["eligible_for_submission"]),
+                    instruction=(row["instruction"] or "")[:500],
+                    max_severity=row["max_severity"] or "critical",
+                    created_at=row["created_at"] or "",
+                    confidentiality_requirement="",
+                )
+                profile.in_scope.append(asset)
+
+            # Load out-of-scope assets
+            cur.execute("SELECT * FROM out_of_scope WHERE program_id = ?", (prog["id"],))
+            for row in cur.fetchall():
+                asset = ScopeAsset(
+                    asset_type=row["asset_type"] or "OTHER",
+                    identifier=row["asset_identifier"] or "",
+                    eligible_for_bounty=False,
+                    eligible_for_submission=False,
+                    instruction=(row["instruction"] or "")[:500],
+                    max_severity="none",
+                    created_at=row["created_at"] or "",
+                    confidentiality_requirement="",
+                )
+                profile.out_of_scope.append(asset)
+
+            # Load bounty table
+            cur.execute("SELECT * FROM severity_bounties WHERE program_id = ?", (prog["id"],))
+            for row in cur.fetchall():
+                sev = (row["severity"] or "").lower()
+                if sev == "critical":
+                    profile.bounty_table.critical_min = row["min_bounty"] or 0
+                    profile.bounty_table.critical_max = row["max_bounty"] or 0
+                elif sev == "high":
+                    profile.bounty_table.high_min = row["min_bounty"] or 0
+                    profile.bounty_table.high_max = row["max_bounty"] or 0
+                elif sev == "medium":
+                    profile.bounty_table.medium_min = row["min_bounty"] or 0
+                    profile.bounty_table.medium_max = row["max_bounty"] or 0
+                elif sev == "low":
+                    profile.bounty_table.low_min = row["min_bounty"] or 0
+                    profile.bounty_table.low_max = row["max_bounty"] or 0
+
+            db.close()
+
+            # Detect recent scope additions
+            self._detect_recent_additions(profile)
+            profile.fetched_at = datetime.now().isoformat()
+
+            # Save locally
+            self.save_program(profile)
+            return profile
+
+        except Exception:
+            return None
+
+    def list_bountyhound_programs(self, bh_db_path: str = "") -> list[dict]:
+        """List all programs available in BountyHound's database."""
+        import sqlite3
+
+        if not bh_db_path:
+            bh_db_path = os.getenv("BOUNTYHOUND_DB", "")
+        if not bh_db_path:
+            candidates = [
+                Path.home() / "Desktop" / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+                Path.home() / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+                Path("/root") / "BountyHound" / "bountyhound-agent" / "data" / "h1-programs.db",
+            ]
+            for c in candidates:
+                if c.exists():
+                    bh_db_path = str(c)
+                    break
+
+        if not bh_db_path or not Path(bh_db_path).exists():
+            return []
+
+        try:
+            db = sqlite3.connect(bh_db_path)
+            db.row_factory = sqlite3.Row
+            cur = db.cursor()
+            cur.execute(
+                "SELECT handle, name, offers_bounties, max_bounty, resolved_report_count "
+                "FROM programs WHERE state = 'public_mode' ORDER BY max_bounty DESC"
+            )
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "handle": row["handle"],
+                    "name": row["name"],
+                    "bounties": bool(row["offers_bounties"]),
+                    "max_bounty": row["max_bounty"] or 0,
+                    "resolved": row["resolved_report_count"] or 0,
+                })
+            db.close()
+            return results
+        except Exception:
+            return []
+
     def import_program(self, handle_or_url: str) -> ProgramProfile:
-        """Import a program from HackerOne. Tries API first, falls back to scraping.
+        """Import a program. Tries: saved cache -> BountyHound DB -> API -> scraping.
 
         Accepts:
         - Program handle: "shopify"
@@ -460,17 +623,24 @@ class HackerOneImporter:
         """
         handle, platform = self._parse_input(handle_or_url)
 
-        # Return cached profile if fresh
+        # 1. Return cached profile if fresh
         saved = self.load_program(handle)
         if saved and not self._is_stale(saved):
             return saved
 
+        # 2. Try BountyHound's database first (6,340+ programs, instant)
+        if platform == "hackerone":
+            bh_profile = self.import_from_bountyhound(handle)
+            if bh_profile and bh_profile.in_scope:
+                return bh_profile
+
+        # 3. Fall back to API/scraping
         if platform == "hackerone":
             profile = self._fetch_hackerone(handle)
         elif platform == "bugcrowd":
             profile = self._fetch_bugcrowd(handle)
         else:
-            profile = self._fetch_hackerone(handle)  # default
+            profile = self._fetch_hackerone(handle)
 
         self.save_program(profile)
         return profile
@@ -580,8 +750,13 @@ class HackerOneImporter:
                         self._parse_h1_api_response(profile, data)
                     else:
                         self._parse_h1_scopes_api(profile, data)
-            except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
-                pass
+            except urllib.error.HTTPError as e:
+                # Store error for debugging
+                profile._api_errors = getattr(profile, "_api_errors", [])
+                profile._api_errors.append(f"API {e.code}: {e.reason} for {url}")
+            except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+                profile._api_errors = getattr(profile, "_api_errors", [])
+                profile._api_errors.append(f"API error: {e} for {url}")
 
     def _parse_h1_api_response(self, profile: ProgramProfile, data: dict[str, Any]) -> None:
         """Parse the HackerOne API v1 JSON:API response format."""
