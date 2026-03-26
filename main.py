@@ -37,6 +37,7 @@ from tools.dns_rebind import register_dns_rebind_tools
 from tools.web_search import register_web_search_tools
 from tools.fetch_page import register_fetch_tools
 from tools.browser import register_browser_tools
+from tools.auth_tools import register_auth_tools
 from core.agent import Agent
 
 
@@ -97,6 +98,9 @@ def build_registry(config: Config) -> ToolRegistry:
     for tool in register_fetch_tools(config):
         registry.register(tool)
     for tool in register_browser_tools(config):
+        registry.register(tool)
+    # Authenticated testing tools (login, IDOR, privilege escalation)
+    for tool in register_auth_tools(config):
         registry.register(tool)
     return registry
 

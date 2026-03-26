@@ -42,11 +42,11 @@ def subfinder_enum(target: str, flags: str = "") -> dict[str, Any]:
 
 
 def httpx_probe(targets: str, flags: str = "-sc -title -td") -> dict[str, Any]:
-    """Probe HTTP endpoints using httpx (Go version).
+    """Probe HTTP endpoints using httpx (Go version) or curl fallback.
 
     targets can be a single URL or comma-separated list.
-    Handles both the Go httpx (ProjectDiscovery) which uses -u/-list
-    and falls back gracefully on Windows where /dev/stdin doesn't exist.
+    Auto-detects if Go httpx (ProjectDiscovery) is available.
+    Falls back to curl-based probing if only Python httpx is installed.
     """
     targets = sanitize_subprocess_arg(targets, "target")
     flags = sanitize_subprocess_arg(flags, "flags")
@@ -54,7 +54,36 @@ def httpx_probe(targets: str, flags: str = "-sc -title -td") -> dict[str, Any]:
     # Split comma-separated targets
     target_list = [t.strip() for t in targets.split(",") if t.strip()]
 
-    # For single target, use -u flag (works on all platforms)
+    # Detect which httpx is available (Go vs Python)
+    version_check = run_cmd(["httpx", "-version"], timeout=5)
+    is_go_httpx = "projectdiscovery" in version_check.get("stdout", "").lower() or \
+                  "projectdiscovery" in version_check.get("stderr", "").lower()
+
+    if not is_go_httpx:
+        # Fallback to curl-based probing
+        outputs = []
+        for t in target_list[:20]:
+            url = t if t.startswith("http") else f"https://{t}"
+            result = run_cmd(
+                ["curl", "-s", "-o", "/dev/null", "-w",
+                 "%{http_code} %{size_download} %{url_effective} %{content_type}",
+                 "-L", "--max-time", "10", url],
+                timeout=15,
+            )
+            if result.get("stdout"):
+                parts = result["stdout"].strip().split(" ", 3)
+                status = parts[0] if parts else "000"
+                size = parts[1] if len(parts) > 1 else "0"
+                final_url = parts[2] if len(parts) > 2 else url
+                ctype = parts[3] if len(parts) > 3 else ""
+                outputs.append(f"{final_url} [{status}] [{ctype}] [{size} bytes]")
+        return {
+            "stdout": "\n".join(outputs) if outputs else "No live hosts found",
+            "stderr": "" if outputs else "curl-based fallback: Go httpx not installed",
+            "returncode": 0 if outputs else 1,
+        }
+
+    # Go httpx: use -u flag for single target
     if len(target_list) == 1:
         cmd = ["httpx", "-u", target_list[0], "-silent"]
         if flags:

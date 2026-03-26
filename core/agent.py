@@ -104,6 +104,7 @@ from brain.scale_model import ScaleModel
 from intel.hackerone import HackerOneImporter
 from core.repetition import RepetitionIdentifier
 from core.pentest_tree import PentestTree
+from core.session_manager import SessionManager
 from utils.response_classifier import ResponseClassifier
 from utils.output_summarizer import OutputSummarizer
 from core.prompts import REFLEXION_PROMPT, PIVOT_PROMPT
@@ -205,6 +206,7 @@ class Agent:
         self.repetition_id = RepetitionIdentifier()
         self.response_classifier = ResponseClassifier()
         self.output_summarizer = OutputSummarizer()
+        self.session_mgr = SessionManager(config.data_dir, self.auth_context)
         self.ptt: PentestTree | None = None  # Initialized per-target in run()
         # Live TUI display
         self.display = LiveDisplay(console)
@@ -2520,6 +2522,17 @@ class Agent:
             return f"BLOCKED: {block_reason}"
 
         self.repetition_id.record(name, inputs, step_num)
+
+        # Adaptive request throttling - slow down if WAF detected
+        if hasattr(self, '_last_tool_time') and hasattr(self, '_throttle_seconds'):
+            elapsed = time.monotonic() - self._last_tool_time
+            if elapsed < self._throttle_seconds:
+                wait = self._throttle_seconds - elapsed
+                time.sleep(wait)
+        self._last_tool_time = time.monotonic()
+        if not hasattr(self, '_throttle_seconds'):
+            self._throttle_seconds = 1.0  # Default 1s between tools
+
         self.console.print(f"[dim]Executing {name}...[/dim]")
         result = self.registry.execute(name, inputs)
         stdout = result.get("stdout", "")
@@ -2533,9 +2546,19 @@ class Agent:
 
         if classification.category == "waf_block":
             self.console.print(f"[yellow]WAF BLOCK detected ({classification.waf_vendor}): {classification.recommendation}[/yellow]")
+            # Increase throttle on WAF detection
+            self._throttle_seconds = min(self._throttle_seconds * 2, 30.0)
+            self.console.print(f"[dim]Throttle increased to {self._throttle_seconds:.0f}s[/dim]")
             if self.ptt:
                 target = inputs.get("target", inputs.get("url", ""))
                 self.ptt.record_failure(step_num, name, target, f"WAF block ({classification.waf_vendor})")
+        elif classification.category == "rate_limited":
+            self.console.print(f"[yellow]Rate limited. Backing off.[/yellow]")
+            self._throttle_seconds = min(self._throttle_seconds * 3, 60.0)
+            time.sleep(self._throttle_seconds)
+            if self.ptt:
+                target = inputs.get("target", inputs.get("url", ""))
+                self.ptt.record_failure(step_num, name, target, "Rate limited")
         elif classification.category == "tool_error":
             self.console.print(f"[red]Tool error: {classification.details}[/red]")
             if self.ptt:
