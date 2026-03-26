@@ -2526,8 +2526,12 @@ class Agent:
         idx = 1
 
         # Primary: tools from ToolRAG retrieval (most relevant to hypothesis)
-        for tool_name in tools:
-            tool = self.registry.get(tool_name)
+        for tool_item in tools:
+            # tools can be Tool objects or tool name strings
+            if isinstance(tool_item, str):
+                tool = self.registry.get(tool_item)
+            else:
+                tool = tool_item  # Already a Tool object
             if tool:
                 ep = hyp.endpoint if hasattr(hyp, "endpoint") else target
                 actions.append(f"{idx}. {tool.name}: {tool.description[:80]} (target: {ep})")
