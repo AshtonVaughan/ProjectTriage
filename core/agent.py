@@ -102,6 +102,11 @@ from brain.escalation_router import EscalationRouter
 from brain.data_manager import DataManager
 from brain.scale_model import ScaleModel
 from intel.hackerone import HackerOneImporter
+from core.repetition import RepetitionIdentifier
+from core.pentest_tree import PentestTree
+from utils.response_classifier import ResponseClassifier
+from utils.output_summarizer import OutputSummarizer
+from core.prompts import REFLEXION_PROMPT, PIVOT_PROMPT
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
@@ -196,6 +201,11 @@ class Agent:
         self.data_mgr = DataManager(config.data_dir)
         self.scale_model = ScaleModel()
         self.h1_importer = HackerOneImporter(config.data_dir)
+        # Reasoning quality modules (from deep research)
+        self.repetition_id = RepetitionIdentifier()
+        self.response_classifier = ResponseClassifier()
+        self.output_summarizer = OutputSummarizer()
+        self.ptt: PentestTree | None = None  # Initialized per-target in run()
         # Live TUI display
         self.display = LiveDisplay(console)
 
@@ -228,6 +238,7 @@ class Agent:
         self.memory = TargetMemory(self.target_model.target_dir)
         self.evidence = EvidenceCapture(self.target_model.target_dir)
         self.scope = Scope.from_target(target)
+        self.ptt = PentestTree(target)
 
         # Total step budget = max_steps_per_phase * 5 (comparable to old 5-phase model)
         total_budget = self.config.max_steps_per_phase * 5
@@ -2454,12 +2465,17 @@ class Agent:
             f"{methodology_hint}"
         )
 
+        # Inject Pentest Tree as primary state document
+        ptt_context = ""
+        if self.ptt:
+            ptt_context = f"\n--- PENTEST TREE (ground truth) ---\n{self.ptt.render(max_chars=2500)}\n---\n"
+
         prompt = REACT_TEMPLATE.format(
             tool_descriptions=tool_descriptions,
             phase=f"{phase_label} - Testing hypothesis: {hyp.technique}",
             target=target,
             context=(
-                self.context.build_context()
+                ptt_context
                 + hypothesis_context
                 + (f"\n{world_context}" if world_context else "")
                 + (f"\n{knowledge_ctx}" if knowledge_ctx else "")
@@ -2493,24 +2509,59 @@ class Agent:
         return response
 
     def _execute_tool(self, name: str, inputs: dict[str, Any]) -> str:
-        """Execute a tool and return its output."""
+        """Execute a tool and return its output, with repetition blocking and response classification."""
+        # Repetition check - block repeated actions before execution
+        step_num = self.attack_graph.total_steps if self.attack_graph else 0
+        blocked, block_reason = self.repetition_id.check(name, inputs, step_num)
+        if blocked:
+            self.console.print(f"[bold yellow]>>> {block_reason}[/bold yellow]")
+            if self.ptt:
+                self.ptt.block_path(f"{name} on {inputs.get('target', inputs.get('url', '?'))}: repeated too many times")
+            return f"BLOCKED: {block_reason}"
+
+        self.repetition_id.record(name, inputs, step_num)
         self.console.print(f"[dim]Executing {name}...[/dim]")
         result = self.registry.execute(name, inputs)
         stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
         returncode = result.get("returncode", -1)
 
-        if returncode != 0 and stderr:
-            output = f"Error (code {returncode}): {stderr}\n{stdout}"
-        else:
-            output = stdout
+        # Classify the response
+        classification = self.response_classifier.classify_tool_output(
+            name, returncode, stdout, stderr
+        )
 
-        display = _truncate(output, 300)
-        if output:
+        if classification.category == "waf_block":
+            self.console.print(f"[yellow]WAF BLOCK detected ({classification.waf_vendor}): {classification.recommendation}[/yellow]")
+            if self.ptt:
+                target = inputs.get("target", inputs.get("url", ""))
+                self.ptt.record_failure(step_num, name, target, f"WAF block ({classification.waf_vendor})")
+        elif classification.category == "tool_error":
+            self.console.print(f"[red]Tool error: {classification.details}[/red]")
+            if self.ptt:
+                target = inputs.get("target", inputs.get("url", ""))
+                self.ptt.record_failure(step_num, name, target, classification.details)
+
+        if returncode != 0 and stderr:
+            raw_output = f"Error (code {returncode}): {stderr}\n{stdout}"
+        else:
+            raw_output = stdout
+
+        # Summarize tool output for better LLM reasoning
+        summarized = self.output_summarizer.summarize(name, raw_output)
+        agent_output = f"{self.response_classifier.format_for_agent(classification)}\n{summarized}" if classification.category != "real_content" else summarized
+
+        # Update PTT on success
+        if classification.category == "real_content" and raw_output and self.ptt:
+            target = inputs.get("target", inputs.get("url", ""))
+            self.ptt.record_success(step_num, name, target, summarized[:200])
+
+        display = _truncate(agent_output, 300)
+        if agent_output:
             self.console.print(
                 Panel(display, title=f"[dim]{name} output[/dim]", border_style="dim")
             )
-        return output
+        return agent_output
 
     # ==================================================================
     # World model updates

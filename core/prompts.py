@@ -232,6 +232,19 @@ that hypothesis. Think about:
 - If this succeeds, what CHAIN could amplify the impact?
 - If this fails, what PIVOT makes sense?
 
+When deciding your next action, follow the FARR framework:
+- Findings: What have you discovered so far? (read the Pentest Tree)
+- Action: What specific action addresses the most promising finding?
+- Reasoning: Why is this the best next step?
+- Result: What do you expect to learn from this action?
+
+CRITICAL RULES:
+- NEVER repeat an action that appears in "Tried (Failed)" in the Pentest Tree
+- NEVER attempt targets listed in "Dead Ends"
+- If a tool fails 2+ times, switch to a different tool
+- If a target returns 404/403 consistently, mark it as a dead end and move on
+- Empty tool output means the target is blocked or doesn't exist - do NOT retry
+
 """ + OFFENSIVE_KNOWLEDGE
 
 # =============================================================================
@@ -361,3 +374,77 @@ Think creatively. The best bug bounty payouts come from chains that no one else 
 TOOL_DESCRIPTION_TEMPLATE = """- {name}: {description}
   Parameters: {parameters}
   Example: {example}"""
+
+# =============================================================================
+# CONSTRAINED ACTION PROMPT - Forces selection from a numbered action list.
+# Single biggest perf gain from the STT paper (arXiv:2509.07939):
+# took an 8B model from 13.5% -> 71.8% on pentesting tasks.
+# =============================================================================
+
+CONSTRAINED_ACTION_PROMPT = """Based on the current Pentest Tree state below, select the BEST next action.
+
+{pentest_tree}
+
+Available actions for this step:
+{action_list}
+
+RULES:
+- Select exactly ONE action by number
+- Explain your reasoning in 1-2 sentences
+- If a target/tool appears in "Dead Ends" or "Tried (Failed)", do NOT select it again
+- Prefer actions that build on successful findings
+- Prefer untried tools/targets over retrying failed ones
+
+Output format:
+Selection: <number>
+Reasoning: <1-2 sentences>
+Action: <tool_name>
+Action Input: <json parameters>
+"""
+
+# =============================================================================
+# REFLEXION PROMPT - Forced reflection after every failed action.
+# Breaks the repeat loop by requiring the agent to articulate WHY something
+# failed before being allowed to proceed.
+# =============================================================================
+
+REFLEXION_PROMPT = """The previous action FAILED. Before proceeding, you MUST analyze the failure.
+
+Previous action: {tool} with inputs {inputs}
+Expected result: {expected}
+Actual result: {actual}
+Classification: {classification}
+
+Answer these questions:
+1. WHY did this fail? (tool error, WAF block, target doesn't exist, wrong approach?)
+2. Should this target be marked as a DEAD END? (yes/no)
+3. What DIFFERENT approach should be tried instead?
+
+Output format:
+Failure Analysis: <1-2 sentences explaining why>
+Dead End: <yes/no>
+Dead End Reason: <if yes, what to add to blocked paths>
+Next Approach: <what to try differently - must be a DIFFERENT tool or target>
+"""
+
+# =============================================================================
+# PIVOT PROMPT - Used when the RepetitionIdentifier blocks an action.
+# Forces the agent onto untried tools/targets instead of spinning.
+# =============================================================================
+
+PIVOT_PROMPT = """Your previous action was BLOCKED by the Repetition Identifier.
+
+Blocked action: {tool} on {target}
+Reason: {reason}
+Times attempted: {count}
+
+You have used these tools recently: {recent_tools}
+These tools have NOT been used: {untried_tools}
+
+You MUST select a completely different approach. Choose from the untried tools or a different target entirely.
+
+Output format:
+New Strategy: <1-2 sentences on what to try instead>
+Action: <tool_name from untried list>
+Action Input: <json parameters>
+"""
