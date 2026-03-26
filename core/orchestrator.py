@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from chain_analyzer import ChainAnalyzer
     from hypothesis import Hypothesis, HypothesisEngine
     from attack_graph import AttackGraph
-    from provider import Provider
+    from core.provider import Provider
     from world_model import WorldModel
 
 log = logging.getLogger(__name__)

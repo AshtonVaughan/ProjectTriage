@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from provider import Provider
+    from core.provider import Provider
 
 log = logging.getLogger(__name__)
 

@@ -73,6 +73,14 @@ class Database:
         ).fetchone()
         return row is not None
 
+    def clear_hypotheses_for_target(self, target: str) -> int:
+        """Clear all hypotheses for a target to allow regeneration on new sessions."""
+        cursor = self.conn.execute(
+            "DELETE FROM hypotheses WHERE target = ?", (target,)
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
     def insert_hypothesis(
         self,
         hypothesis_id: str,

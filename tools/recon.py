@@ -11,10 +11,15 @@ from core.tool_registry import Tool
 from utils.utils import run_cmd, sanitize_subprocess_arg
 
 
-def nmap_scan(target: str, ports: str = "1-1000", flags: str = "-sV") -> dict[str, Any]:
+def nmap_scan(target: str, ports: str = "80,443,8080,8443", flags: str = "-sV") -> dict[str, Any]:
     """Run nmap scan on a target."""
     target = sanitize_subprocess_arg(target, "target")
+    # Strip protocol prefix - nmap takes hostnames, not URLs
+    target = target.replace("https://", "").replace("http://", "").split("/")[0]
     ports = sanitize_subprocess_arg(ports, "generic")
+    # Sanitize ports - reject invalid values like "auto", "all"
+    if not all(c.isdigit() or c in "-," for c in ports):
+        ports = "80,443,8080,8443"
     flags = sanitize_subprocess_arg(flags, "flags")
 
     # Sanitize flags: only allow one scan type to prevent conflicts

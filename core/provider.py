@@ -106,7 +106,7 @@ class Provider:
 
     def compress(self, tool_name: str, output: str) -> str:
         """Use the fast model to compress a tool observation into a short summary."""
-        from prompts import COMPRESS_PROMPT
+        from core.prompts import COMPRESS_PROMPT
         prompt = COMPRESS_PROMPT.format(tool_name=tool_name, output=output[:3000])
         return self.chat([{"role": "user", "content": prompt}], temperature=0.1, use_fast=True)
 
@@ -269,6 +269,13 @@ class Provider:
 
         # Strip Qwen3 thinking tags (model outputs <think>...</think> blocks)
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
+        # Strip multiple actions - only keep up to first Action: + Input: block
+        # Models sometimes output 2-3 actions; we only execute the first
+        action_positions = [m.start() for m in re.finditer(r"\nAction:", raw)]
+        if len(action_positions) > 1:
+            # Keep everything up to the second Action:
+            raw = raw[:action_positions[1]].strip()
 
         # Extract thought
         thought_match = re.search(r"Thought:\s*(.+?)(?=\nAction:|\Z)", raw, re.DOTALL)

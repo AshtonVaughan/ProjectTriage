@@ -242,6 +242,11 @@ class Agent:
         self.scope = Scope.from_target(target)
         self.ptt = PentestTree(target)
 
+        # Clear stale hypotheses from previous sessions to allow regeneration
+        cleared = self.db.clear_hypotheses_for_target(target)
+        if cleared:
+            self.console.print(f"[dim]Cleared {cleared} stale hypotheses from previous session[/dim]")
+
         # Total step budget = max_steps_per_phase * 5 (comparable to old 5-phase model)
         total_budget = self.config.max_steps_per_phase * 5
 
@@ -2637,6 +2642,12 @@ class Agent:
         """Check if a URL is in scope before making requests."""
         if not self.scope or not self.scope.rules:
             return True  # No scope rules = assume in scope
+        # Bare paths like /api/ are relative to the target - always in scope
+        if url.startswith("/") and "://" not in url:
+            return True
+        # Empty or very short strings are not real URLs
+        if len(url) < 5:
+            return True
         return self.scope.is_in_scope(url)
 
     def _execute_tool(self, name: str, inputs: dict[str, Any]) -> str:
