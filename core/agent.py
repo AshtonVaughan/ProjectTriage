@@ -107,7 +107,7 @@ from core.pentest_tree import PentestTree
 from core.session_manager import SessionManager
 from utils.response_classifier import ResponseClassifier
 from utils.output_summarizer import OutputSummarizer
-from core.prompts import REFLEXION_PROMPT, PIVOT_PROMPT
+from core.prompts import REFLEXION_PROMPT, PIVOT_PROMPT, CONSTRAINED_ACTION_PROMPT
 
 # Maximum raw observation size before compression (bytes)
 MAX_OBSERVATION_BYTES = 8000
@@ -2470,20 +2470,26 @@ class Agent:
         # Inject Pentest Tree as primary state document
         ptt_context = ""
         if self.ptt:
-            ptt_context = f"\n--- PENTEST TREE (ground truth) ---\n{self.ptt.render(max_chars=2500)}\n---\n"
+            ptt_context = self.ptt.render(max_chars=2500)
 
-        prompt = REACT_TEMPLATE.format(
-            tool_descriptions=tool_descriptions,
-            phase=f"{phase_label} - Testing hypothesis: {hyp.technique}",
-            target=target,
-            context=(
-                ptt_context
-                + hypothesis_context
-                + (f"\n{world_context}" if world_context else "")
-                + (f"\n{knowledge_ctx}" if knowledge_ctx else "")
-                + (f"\n{patterns_ctx}" if patterns_ctx else "")
-            ),
+        # Build constrained action list from available tools + hypothesis
+        action_list = self._build_action_list(tools, hyp, target)
+
+        # Auth context if sessions are available
+        auth_hint = ""
+        if self.session_mgr and self.session_mgr.active_sessions:
+            auth_hint = f"\n{self.session_mgr.get_auth_context_for_agent()}"
+
+        # Use CONSTRAINED_ACTION_PROMPT (proven: 8B model 13.5% -> 71.8%)
+        prompt = CONSTRAINED_ACTION_PROMPT.format(
+            pentest_tree=ptt_context,
+            action_list=action_list,
         )
+        # Append hypothesis context and methodology
+        prompt += hypothesis_context
+        prompt += auth_hint
+        if knowledge_ctx:
+            prompt += f"\n{knowledge_ctx[:1000]}"
 
         step_start = time.monotonic()
         response = self.provider.react_step(SYSTEM_PROMPT, prompt)
@@ -2510,6 +2516,45 @@ class Agent:
 
         return response
 
+    def _build_action_list(self, tools: list[str], hyp: Any, target: str) -> str:
+        """Build a numbered action list for the constrained prompt.
+
+        Instead of free-form generation, the LLM selects from this list.
+        This single change took an 8B model from 13.5% to 71.8% (STT paper).
+        """
+        actions = []
+        idx = 1
+
+        # Primary: tools from ToolRAG retrieval (most relevant to hypothesis)
+        for tool_name in tools:
+            tool = self.registry.get(tool_name)
+            if tool:
+                ep = hyp.endpoint if hasattr(hyp, "endpoint") else target
+                actions.append(f"{idx}. {tool.name}: {tool.description[:80]} (target: {ep})")
+                idx += 1
+
+        # Add auth tools if sessions exist
+        if self.session_mgr and self.session_mgr.active_sessions:
+            actions.append(f"{idx}. auth_compare: Test IDOR - compare responses across user sessions")
+            idx += 1
+            actions.append(f"{idx}. auth_request: Make authenticated request as a specific user")
+            idx += 1
+
+        # Add web search for reconnaissance
+        actions.append(f"{idx}. search_web: Search for CVEs, disclosed vulns, or target intel")
+        idx += 1
+
+        # Add a pivot/skip option
+        actions.append(f"{idx}. SKIP: This hypothesis is a dead end, move to the next one")
+
+        return "\n".join(actions)
+
+    def _check_scope(self, url: str) -> bool:
+        """Check if a URL is in scope before making requests."""
+        if not self.scope or not self.scope.rules:
+            return True  # No scope rules = assume in scope
+        return self.scope.is_in_scope(url)
+
     def _execute_tool(self, name: str, inputs: dict[str, Any]) -> str:
         """Execute a tool and return its output, with repetition blocking and response classification."""
         # Repetition check - block repeated actions before execution
@@ -2520,6 +2565,14 @@ class Agent:
             if self.ptt:
                 self.ptt.block_path(f"{name} on {inputs.get('target', inputs.get('url', '?'))}: repeated too many times")
             return f"BLOCKED: {block_reason}"
+
+        # Scope check - prevent testing out-of-scope assets
+        target_url = inputs.get("target", inputs.get("url", inputs.get("targets", "")))
+        if target_url and not self._check_scope(target_url):
+            self.console.print(f"[red]OUT OF SCOPE: {target_url} - skipping[/red]")
+            if self.ptt:
+                self.ptt.block_path(f"{target_url}: out of scope")
+            return f"BLOCKED: {target_url} is out of scope. Do not test this target."
 
         self.repetition_id.record(name, inputs, step_num)
 

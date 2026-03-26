@@ -119,8 +119,8 @@ print("\n=== 1. MODULE IMPORTS (all 110 files) ===")
 
 MODULES = {
     "core": ["agent", "config", "context", "cost_tracker", "orchestrator",
-             "parallel", "planner", "prompts", "provider", "scope",
-             "session", "tool_registry"],
+             "parallel", "pentest_tree", "planner", "prompts", "provider",
+             "repetition", "scope", "session", "session_manager", "tool_registry"],
     "brain": ["agot_reasoner", "arch_analyzer", "assumption_engine",
               "chain_analyzer", "chain_engine", "client_analyzer",
               "confusion_engine", "coverage_asymmetry", "curriculum",
@@ -141,15 +141,15 @@ MODULES = {
                "memory", "models_db", "patterns", "profiles",
                "target_model"],
     "ui": ["live_display", "report", "report_generator", "tui"],
-    "utils": ["db", "evidence_collector", "quality_gate", "sanitizer",
-              "utils", "validator", "wordlists"],
+    "utils": ["db", "evidence_collector", "output_summarizer", "quality_gate",
+              "response_classifier", "sanitizer", "utils", "validator", "wordlists"],
     "tools": ["analyzer", "browser", "cache_poison", "cloud_meta",
               "cors", "crawler", "crlf", "desync", "discovery",
               "dns_rebind", "exploit", "fetch_page", "fuzzer_tool",
               "graphql", "jwt", "llm_attacks", "oauth", "prompt_inject",
               "proto_pollution", "race", "recon", "register_discovery",
               "register_new", "saml", "scanner", "ssti",
-              "subdomain_takeover", "web_search", "xss"],
+              "subdomain_takeover", "web_search", "xss", "auth_tools"],
 }
 
 for pkg, modules in MODULES.items():
@@ -795,6 +795,165 @@ def _test_env_hypotheses_through_agent_scorer():
             assert 1 <= score <= 10, f"env hyp {field}={val!r} -> {score} out of range"
 
 check("Environment hypotheses -> _to_int_score (all 93 hypotheses)", _test_env_hypotheses_through_agent_scorer)
+
+
+# ── 9. Reasoning quality modules ───────────────────────────────────────
+
+print("\n=== 9. REASONING QUALITY MODULES ===")
+
+def _test_repetition_identifier():
+    from core.repetition import RepetitionIdentifier
+    ri = RepetitionIdentifier()
+    # First two calls should pass
+    b1, _ = ri.check("curl", {"url": "https://x.com/ws"}, 1)
+    ri.record("curl", {"url": "https://x.com/ws"}, 1)
+    b2, _ = ri.check("curl", {"url": "https://x.com/ws"}, 2)
+    ri.record("curl", {"url": "https://x.com/ws"}, 2)
+    # Third should be blocked
+    b3, reason = ri.check("curl", {"url": "https://x.com/ws"}, 3)
+    assert b3, "Should block after 2 exact repeats"
+    assert "BLOCK" in reason.upper()
+    # Different inputs should pass
+    b4, _ = ri.check("curl", {"url": "https://x.com/api"}, 4)
+    assert not b4
+    # Get untried tools
+    untried = ri.get_untried_tools(["nmap", "curl", "subfinder", "nuclei"])
+    assert "nmap" in untried  # nmap hasn't been used
+    assert "curl" not in untried  # curl has been used
+
+check("RepetitionIdentifier: block repeats + allow different + untried tools", _test_repetition_identifier)
+
+def _test_pentest_tree():
+    from core.pentest_tree import PentestTree
+    pt = PentestTree("example.com")
+    pt.add_service("example.com", 443, "https", "nginx/1.21")
+    pt.add_service("example.com", 80, "http")
+    pt.add_subdomain("api.example.com")
+    pt.add_subdomain("admin.example.com")
+    pt.add_tech("framework", "nextjs")
+    pt.add_tech("waf", "cloudflare")
+    pt.record_success(1, "nmap", "example.com", "Found 2 open ports")
+    pt.record_failure(2, "curl", "wss://example.com/ws", "404 not found")
+    pt.record_failure(3, "curl", "wss://example.com/socket", "404 not found")
+    pt.block_path("No WebSocket endpoints exist on this target")
+    pt.add_finding({"type": "xss", "endpoint": "/search", "severity": "medium"})
+    # Test was_tried
+    assert pt.was_tried("nmap", "example.com")
+    assert pt.was_tried("curl", "wss://example.com/ws")
+    assert not pt.was_tried("nuclei", "example.com")
+    # Render
+    rendered = pt.render(max_chars=3000)
+    assert len(rendered) <= 3000
+    assert "example.com" in rendered
+    assert "nginx" in rendered or "443" in rendered
+    # Serialize round-trip
+    d = pt.to_dict()
+    pt2 = PentestTree.from_dict(d)
+    assert pt2.target == "example.com"
+    assert len(pt2.services) == 2
+
+check("PentestTree: full lifecycle + render + serialize", _test_pentest_tree)
+
+def _test_response_classifier():
+    from utils.response_classifier import ResponseClassifier
+    rc = ResponseClassifier()
+    # WAF block
+    r1 = rc.classify_http(403, {"server": "cloudflare", "cf-ray": "abc"}, "Attention Required! Cloudflare")
+    assert r1.category == "waf_block", f"Expected waf_block, got {r1.category}"
+    assert r1.waf_vendor == "cloudflare"
+    # Rate limit
+    r2 = rc.classify_http(429, {}, "Too many requests")
+    assert r2.category == "rate_limited"
+    # Auth redirect
+    r3 = rc.classify_http(302, {"location": "/login"}, "")
+    assert r3.category == "auth_redirect"
+    # Real content
+    r4 = rc.classify_http(200, {"content-type": "text/html"}, "<html><body>Hello World</body></html>")
+    assert r4.category == "real_content"
+    # Tool error
+    r5 = rc.classify_tool_output("nmap", -1, "", "Command timed out after 120s")
+    assert r5.category == "tool_error"
+    # Empty suspicious
+    r6 = rc.classify_tool_output("nuclei", 0, "", "")
+    assert r6.category in ("tool_error", "empty_suspicious")
+    # Format for agent
+    fmt = rc.format_for_agent(r1)
+    assert "WAF" in fmt.upper() or "BLOCK" in fmt.upper()
+
+check("ResponseClassifier: WAF + rate_limit + auth_redirect + real + tool_error + format", _test_response_classifier)
+
+def _test_output_summarizer():
+    from utils.output_summarizer import OutputSummarizer
+    os_mod = OutputSummarizer()
+    # nmap
+    s1 = os_mod.summarize("nmap", "80/tcp open http nginx/1.21\n443/tcp open ssl/https\n22/tcp filtered ssh")
+    assert "80" in s1 or "open" in s1.lower()
+    # subfinder
+    s2 = os_mod.summarize("subfinder", "api.example.com\nadmin.example.com\nstaging.example.com")
+    assert "3" in s2 or "api" in s2
+    # empty
+    s3 = os_mod.summarize("nuclei", "")
+    assert s3  # Should return something, not empty
+    # curl
+    s4 = os_mod.summarize("curl", "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html>test</html>")
+    assert "200" in s4
+    # is_empty_or_blocked
+    empty, reason = os_mod.is_empty_or_blocked("nuclei", "")
+    assert empty
+
+check("OutputSummarizer: nmap + subfinder + empty + curl + is_empty_or_blocked", _test_output_summarizer)
+
+def _test_session_manager():
+    from core.session_manager import SessionManager
+    import tempfile
+    td = Path(tempfile.mkdtemp())
+    sm = SessionManager(td)
+    # Add credentials
+    cred = sm.add_credential("user_a", "test@test.com", "pass123", role="user")
+    assert cred.username == "test@test.com"
+    cred2 = sm.add_credential("admin", "admin@test.com", "adminpass", role="admin")
+    # List (masked)
+    creds = sm.list_credentials()
+    assert len(creds) == 2
+    # Has multiple users
+    assert not sm.has_multiple_users()  # No active sessions yet
+    # Auth context
+    ctx = sm.get_auth_context_for_agent()
+    assert isinstance(ctx, str)
+    # Remove
+    sm.remove_credential("admin")
+    assert len(sm.credentials) == 1
+
+check("SessionManager: add/remove credentials + list + auth context", _test_session_manager)
+
+def _test_constrained_prompt_wiring():
+    """Verify the constrained prompt is actually used in _agent_step."""
+    import inspect
+    from core.agent import Agent
+    source = inspect.getsource(Agent._agent_step)
+    assert "CONSTRAINED_ACTION_PROMPT" in source, "CONSTRAINED_ACTION_PROMPT not used in _agent_step"
+    assert "_build_action_list" in source, "_build_action_list not called in _agent_step"
+
+check("Constrained prompt wired into _agent_step (not just defined)", _test_constrained_prompt_wiring)
+
+def _test_scope_checking():
+    """Verify scope checking exists in _execute_tool."""
+    import inspect
+    from core.agent import Agent
+    source = inspect.getsource(Agent._execute_tool)
+    assert "_check_scope" in source, "_check_scope not called in _execute_tool"
+    assert "OUT OF SCOPE" in source, "Out of scope message not in _execute_tool"
+
+check("Scope checking wired into _execute_tool", _test_scope_checking)
+
+def _test_throttling():
+    """Verify adaptive throttling exists in _execute_tool."""
+    import inspect
+    from core.agent import Agent
+    source = inspect.getsource(Agent._execute_tool)
+    assert "_throttle_seconds" in source, "Throttling not in _execute_tool"
+
+check("Adaptive throttling wired into _execute_tool", _test_throttling)
 
 
 # ── Cleanup + Results ──────────────────────────────────────────────────
