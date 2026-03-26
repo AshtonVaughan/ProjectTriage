@@ -38,6 +38,7 @@ from tools.web_search import register_web_search_tools
 from tools.fetch_page import register_fetch_tools
 from tools.browser import register_browser_tools
 from tools.auth_tools import register_auth_tools
+from tools.h1_report import register_h1_report_tools
 from core.agent import Agent
 
 
@@ -101,6 +102,9 @@ def build_registry(config: Config) -> ToolRegistry:
         registry.register(tool)
     # Authenticated testing tools (login, IDOR, privilege escalation)
     for tool in register_auth_tools(config):
+        registry.register(tool)
+    # HackerOne report formatting and submission
+    for tool in register_h1_report_tools(config):
         registry.register(tool)
     return registry
 
