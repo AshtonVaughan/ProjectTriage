@@ -1006,10 +1006,10 @@ class Agent:
                         endpoint=h.get("endpoint", target),
                         technique=h.get("technique", ""),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 5),
-                        exploitability=h.get("exploitability", 5),
-                        impact=h.get("impact", 5),
-                        effort=h.get("effort", 5),
+                        novelty=_to_int_score(h.get("novelty", 5)),
+                        exploitability=_to_int_score(h.get("exploitability", 5)),
+                        impact=_to_int_score(h.get("impact", 5)),
+                        effort=_to_int_score(h.get("effort", 5)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -1201,10 +1201,10 @@ class Agent:
                         endpoint=h.get("endpoint", ep_url),
                         technique=h.get("technique", "assumption_violation"),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 7),
-                        exploitability=h.get("exploitability", 6),
-                        impact=h.get("impact", 7),
-                        effort=h.get("effort", 3),
+                        novelty=_to_int_score(h.get("novelty", 7)),
+                        exploitability=_to_int_score(h.get("exploitability", 6)),
+                        impact=_to_int_score(h.get("impact", 7)),
+                        effort=_to_int_score(h.get("effort", 3)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -1244,10 +1244,10 @@ class Agent:
                         endpoint=h.get("endpoint", ep_url),
                         technique=h.get("technique", "intent_violation"),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 7),
-                        exploitability=h.get("exploitability", 7),
-                        impact=h.get("impact", 8),
-                        effort=h.get("effort", 3),
+                        novelty=_to_int_score(h.get("novelty", 7)),
+                        exploitability=_to_int_score(h.get("exploitability", 7)),
+                        impact=_to_int_score(h.get("impact", 8)),
+                        effort=_to_int_score(h.get("effort", 3)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -1388,10 +1388,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "client_side"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 8),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 4),
+                    novelty=_to_int_score(h.get("novelty", 8)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", 8)),
+                    effort=_to_int_score(h.get("effort", 4)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1431,10 +1431,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "idor"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 7),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 9),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 7)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 9)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1464,10 +1464,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "procedural_skill"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 6),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 2),
+                    novelty=_to_int_score(h.get("novelty", 6)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 8)),
+                    effort=_to_int_score(h.get("effort", 2)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1504,10 +1504,10 @@ class Agent:
                     endpoint=h.get("endpoint", target),
                     technique=h.get("technique", "curriculum"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 5),
-                    exploitability=h.get("exploitability", 6),
-                    impact=h.get("impact", 7),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 5)),
+                    exploitability=_to_int_score(h.get("exploitability", 6)),
+                    impact=_to_int_score(h.get("impact", 7)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1662,10 +1662,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "osint_finding"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 7),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 2),
+                    novelty=_to_int_score(h.get("novelty", 7)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 8)),
+                    effort=_to_int_score(h.get("effort", 2)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1735,10 +1735,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "infra_scan"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 8),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 9),
-                    effort=h.get("effort", 5),
+                    novelty=_to_int_score(h.get("novelty", 8)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", 9)),
+                    effort=_to_int_score(h.get("effort", 5)),
                 )
                 if hyp:
                     # Apply payout tier boost
@@ -1916,10 +1916,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "dom_vuln"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 7),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 7),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 7)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", 7)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -1966,10 +1966,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "ws_vuln"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 7),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 7)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", 8)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2009,10 +2009,10 @@ class Agent:
                         endpoint=h.get("endpoint", target),
                         technique=h.get("technique", "program_intel"),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 8),
-                        exploitability=h.get("exploitability", 7),
-                        impact=h.get("impact", 8),
-                        effort=h.get("effort", 2),
+                        novelty=_to_int_score(h.get("novelty", 8)),
+                        exploitability=_to_int_score(h.get("exploitability", 7)),
+                        impact=_to_int_score(h.get("impact", 8)),
+                        effort=_to_int_score(h.get("effort", 2)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -2045,8 +2045,8 @@ class Agent:
                             endpoint=h.get("endpoint", target),
                             technique=h.get("technique", "monitor_change"),
                             description=h.get("description", ""),
-                            novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 7),
-                            impact=h.get("impact", 8), effort=h.get("effort", 2),
+                            novelty=_to_int_score(h.get("novelty", 9)), exploitability=_to_int_score(h.get("exploitability", 7)),
+                            impact=_to_int_score(h.get("impact", 8)), effort=_to_int_score(h.get("effort", 2)),
                         )
                         if hyp:
                             created.append(hyp)
@@ -2076,8 +2076,8 @@ class Agent:
                     hyp = self.hypothesis_engine.create(
                         endpoint=h.get("endpoint", url), technique=h.get("technique", "h2_desync"),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 7),
-                        impact=h.get("impact", 10), effort=h.get("effort", 5),
+                        novelty=_to_int_score(h.get("novelty", 9)), exploitability=_to_int_score(h.get("exploitability", 7)),
+                        impact=_to_int_score(h.get("impact", 10)), effort=_to_int_score(h.get("effort", 5)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -2113,8 +2113,8 @@ class Agent:
                 hyp = self.hypothesis_engine.create(
                     endpoint=h.get("endpoint", url), technique=h.get("technique", "ai_attack"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 9), exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 9), effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 9)), exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 9)), effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2152,8 +2152,8 @@ class Agent:
                     hyp = self.hypothesis_engine.create(
                         endpoint=h.get("endpoint", url), technique=h.get("technique", "source_vuln"),
                         description=h.get("description", ""),
-                        novelty=h.get("novelty", 8), exploitability=h.get("exploitability", 8),
-                        impact=h.get("impact", 9), effort=h.get("effort", 3),
+                        novelty=_to_int_score(h.get("novelty", 8)), exploitability=_to_int_score(h.get("exploitability", 8)),
+                        impact=_to_int_score(h.get("impact", 9)), effort=_to_int_score(h.get("effort", 3)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -2185,10 +2185,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "differential"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 7),
-                    exploitability=h.get("exploitability", 9),
-                    impact=h.get("impact", 9),
-                    effort=h.get("effort", 2),
+                    novelty=_to_int_score(h.get("novelty", 7)),
+                    exploitability=_to_int_score(h.get("exploitability", 9)),
+                    impact=_to_int_score(h.get("impact", 9)),
+                    effort=_to_int_score(h.get("effort", 2)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2218,10 +2218,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "fuzz"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 6),
-                    exploitability=h.get("exploitability", 7),
-                    impact=h.get("impact", 7),
-                    effort=h.get("effort", 3),
+                    novelty=_to_int_score(h.get("novelty", 6)),
+                    exploitability=_to_int_score(h.get("exploitability", 7)),
+                    impact=_to_int_score(h.get("impact", 7)),
+                    effort=_to_int_score(h.get("effort", 3)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2246,10 +2246,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "supply_chain"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 6),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 8),
-                    effort=h.get("effort", 2),
+                    novelty=_to_int_score(h.get("novelty", 6)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 8)),
+                    effort=_to_int_score(h.get("effort", 2)),
                 )
                 if hyp:
                     created.append(hyp)
@@ -2416,10 +2416,10 @@ class Agent:
                 endpoint=h.get("endpoint", target),
                 technique=h.get("technique", "auth_test"),
                 description=h.get("description", ""),
-                novelty=h.get("novelty", 6),
-                exploitability=h.get("exploitability", 7),
-                impact=h.get("impact", 8),
-                effort=h.get("effort", 3),
+                novelty=_to_int_score(h.get("novelty", 6)),
+                exploitability=_to_int_score(h.get("exploitability", 7)),
+                impact=_to_int_score(h.get("impact", 8)),
+                effort=_to_int_score(h.get("effort", 3)),
             )
             if hyp:
                 created.append(hyp)
@@ -2464,9 +2464,9 @@ class Agent:
                         technique=h.get("technique", ""),
                         description=h.get("description", ""),
                         novelty=8,
-                        exploitability=h.get("exploitability", 8),
-                        impact=h.get("impact", 9),
-                        effort=h.get("effort", 4),
+                        exploitability=_to_int_score(h.get("exploitability", 8)),
+                        impact=_to_int_score(h.get("impact", 9)),
+                        effort=_to_int_score(h.get("effort", 4)),
                     )
                     if hyp:
                         created.append(hyp)
@@ -2479,10 +2479,10 @@ class Agent:
                     endpoint=h.get("endpoint", url),
                     technique=h.get("technique", "chain_unknown"),
                     description=h.get("description", ""),
-                    novelty=h.get("novelty", 9),
-                    exploitability=h.get("exploitability", 8),
-                    impact=h.get("impact", 10),
-                    effort=h.get("effort", 4),
+                    novelty=_to_int_score(h.get("novelty", 9)),
+                    exploitability=_to_int_score(h.get("exploitability", 8)),
+                    impact=_to_int_score(h.get("impact", 10)),
+                    effort=_to_int_score(h.get("effort", 4)),
                 )
                 if hyp:
                     created.append(hyp)

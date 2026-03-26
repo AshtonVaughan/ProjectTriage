@@ -129,9 +129,11 @@ def _search_jina(query: str, max_results: int) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 def search_web(
-    query: str,
+    query: str = "",
     max_results: int = 10,
     backend: str = "auto",
+    target: str = "",
+    q: str = "",
 ) -> dict[str, Any]:
     """Search the web for information using configurable backends.
 
@@ -145,6 +147,11 @@ def search_web(
     - ddgs: DuckDuckGo via duckduckgo-search library
     - jina: Jina AI Search (https://s.jina.ai/)
     """
+    # Handle common LLM param aliases
+    if not query and target:
+        query = target
+    if not query and q:
+        query = q
     query = sanitize_subprocess_arg(query, "generic")
     backend = sanitize_subprocess_arg(backend, "generic").lower()
 
