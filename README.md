@@ -7,9 +7,10 @@
 [Quickstart](#quickstart) &middot; [How It Works](#how-it-works) &middot; [Installation](#installation) &middot; [Architecture](#architecture) &middot; [Cloud GPU](#cloud-gpu-deployment)
 
 ![Python](https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Lines](https://img.shields.io/badge/58K_lines-2ea44f?style=for-the-badge)
+![Lines](https://img.shields.io/badge/71K_lines-2ea44f?style=for-the-badge)
 ![Tools](https://img.shields.io/badge/51+_tools-E95420?style=for-the-badge)
 ![Modules](https://img.shields.io/badge/19_brain_modules-8B5CF6?style=for-the-badge)
+![Files](https://img.shields.io/badge/192_files-06B6D4?style=for-the-badge)
 ![License](https://img.shields.io/badge/MIT-94A3B8?style=for-the-badge)
 
 </div>
@@ -395,7 +396,7 @@ Built on published research:
 
 <div align="center">
 
-**58,447 lines** &middot; **120 files** &middot; **157 verified checks** &middot; **0 known bugs**
+**71,388 lines** &middot; **192 files** &middot; **157 verified checks** &middot; **0 known bugs**
 
 Built for authorized bug bounty testing on programs that explicitly invite security research.
 
