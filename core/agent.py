@@ -579,7 +579,7 @@ class Agent:
                     self.console.print("[yellow]>>> Skipping hypothesis - marked as dead end.[/yellow]")
                     if self.ptt:
                         self.ptt.block_path(f"{hyp.technique} on {hyp.endpoint}: skipped by agent")
-                    self.attack_graph.mark_step()
+                    self.attack_graph.total_steps += 1
                     continue
                 self.console.print("[green]>>> Agent signaled testing complete.[/green]")
                 break
