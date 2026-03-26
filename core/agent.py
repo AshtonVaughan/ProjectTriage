@@ -663,6 +663,9 @@ class Agent:
             self._update_world_model(response.action, response.action_input, observation)
             self._update_target_model(response.action, response.action_input, observation)
 
+            # Generate follow-up hypotheses from discoveries (follow the thread)
+            self._generate_followup_hypotheses(response.action, response.action_input, observation, target)
+
             # Perceptor: structured extraction + compression (replaces raw compress)
             facts = self.perceptor.perceive(
                 response.action, observation, hyp.endpoint, hyp.technique,
@@ -2311,6 +2314,77 @@ class Agent:
         self.console.print(
             f"[cyan]Hypothesis queue: {len(self.attack_graph.hypothesis_queue)} hypotheses loaded[/cyan]"
         )
+
+    def _generate_followup_hypotheses(self, action: str, inputs: dict, output: str, target: str) -> int:
+        """Generate high-priority follow-up hypotheses from tool discoveries.
+
+        When the agent finds a real endpoint (200, 308, 405), immediately
+        generate hypotheses to dig deeper instead of moving to the next
+        hypothesis. This is how elite hunters work - they follow the thread.
+        """
+        if not self.hypothesis_engine or not self.attack_graph:
+            return 0
+
+        created = []
+        url = inputs.get("target", inputs.get("url", ""))
+        if not url:
+            return 0
+
+        # Detect interesting responses worth following up
+        has_api = any(p in url.lower() for p in ["/api", "/graphql", "/v1", "/v2"])
+        has_405 = "405" in output or "Method Not Allowed" in output
+        has_redirect = "308" in output or "301" in output or "302" in output
+        has_200 = "200" in output[:50] or "[200]" in output
+
+        if has_405:
+            # 405 = endpoint exists but wrong method. Try POST, PUT, DELETE
+            for method in ["POST", "PUT", "DELETE", "PATCH"]:
+                hyp = self.hypothesis_engine.create(
+                    endpoint=url,
+                    technique=f"method_probe_{method.lower()}",
+                    description=f"Endpoint {url} returned 405 for GET. Try {method} - the endpoint exists but needs a different HTTP method.",
+                    novelty=8, exploitability=8, impact=8, effort=2,
+                )
+                if hyp:
+                    created.append(hyp)
+
+        if has_api and (has_200 or has_redirect):
+            # Found a live API - probe for common sub-paths
+            api_paths = ["/users", "/me", "/profile", "/admin", "/config", "/health", "/docs", "/swagger", "/openapi.json"]
+            for path in api_paths:
+                full = url.rstrip("/") + path
+                hyp = self.hypothesis_engine.create(
+                    endpoint=full,
+                    technique="api_endpoint_discovery",
+                    description=f"Live API at {url}. Probe {full} for data exposure or auth bypass.",
+                    novelty=7, exploitability=7, impact=8, effort=2,
+                )
+                if hyp:
+                    created.append(hyp)
+
+        if has_redirect:
+            # Follow the redirect destination
+            import re
+            location_match = re.search(r"location:\s*(\S+)", output, re.I)
+            if location_match:
+                redirect_target = location_match.group(1)
+                if not redirect_target.startswith("http"):
+                    base = url.split("/")[0] + "//" + url.split("/")[2] if "://" in url else url
+                    redirect_target = base.rstrip("/") + "/" + redirect_target.lstrip("/")
+                hyp = self.hypothesis_engine.create(
+                    endpoint=redirect_target,
+                    technique="redirect_follow",
+                    description=f"Redirect from {url} to {redirect_target}. Follow it to find the actual API.",
+                    novelty=7, exploitability=6, impact=7, effort=1,
+                )
+                if hyp:
+                    created.append(hyp)
+
+        if created:
+            self.attack_graph.add_hypotheses(created)
+            self.console.print(f"[bold green]>>> {len(created)} follow-up hypotheses from discovery[/bold green]")
+
+        return len(created)
 
     def _generate_hypotheses_from_state(self, target: str) -> int:
         """Generate new hypotheses based on current world model state. Returns count."""

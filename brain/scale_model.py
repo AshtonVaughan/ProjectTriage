@@ -730,17 +730,22 @@ class ScaleModel:
         hypotheses: list[dict[str, Any]] = []
         base = domain.lstrip("*.").split("/")[0]
 
+        # Only include high-value environment prefixes (not all 94)
+        # Use subfinder for bulk subdomain discovery, not per-prefix probing
+        priority_prefixes = ["staging", "stage", "dev", "api-internal", "admin", "internal", "test", "sandbox", "beta", "preprod"]
         for env_type, prefixes in self._ENV_PREFIXES.items():
             for prefix in prefixes:
+                if prefix not in priority_prefixes:
+                    continue
                 subdomain = f"{prefix}.{base}"
                 hypotheses.append({
                     "endpoint": f"https://{subdomain}",
                     "technique": "environment_discovery",
                     "description": f"{env_type} environment probe - {subdomain}",
-                    "novelty": "medium",
-                    "exploitability": "high" if env_type in ("staging", "development", "internal_tooling") else "medium",
-                    "impact": "Staging/dev environments often have weaker auth, verbose errors, and real data subsets",
-                    "effort": "low",
+                    "novelty": 3,       # Low - environment probing is basic recon
+                    "exploitability": 4,  # Low-medium
+                    "impact": 5,         # Medium - might find weaker auth
+                    "effort": 2,         # Easy to check
                     "env_type": env_type,
                 })
 
