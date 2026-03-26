@@ -178,6 +178,46 @@ class Provider:
             url = url.rstrip("/") + "/v1"
         return cls(base_url=url, model=model, embed_model=embed_model, fast_model=fast_model)
 
+    @classmethod
+    def from_cloud_api(cls, provider: str = "anthropic", api_key: str = "",
+                       model: str = "") -> "Provider":
+        """Connect to a cloud API (Anthropic, OpenAI, etc.) instead of local LLM.
+
+        Anthropic's API is OpenAI-compatible at https://api.anthropic.com/v1
+        OpenAI uses https://api.openai.com/v1
+
+        Args:
+            provider: "anthropic" or "openai"
+            api_key: API key for the provider
+            model: Model name. Defaults to best available.
+        """
+        import os
+
+        if not api_key:
+            if provider == "anthropic":
+                api_key = os.getenv("ANTHROPIC_API_KEY", "")
+            else:
+                api_key = os.getenv("OPENAI_API_KEY", "")
+
+        if not api_key:
+            raise ConnectionError(
+                f"No API key for {provider}. Set {'ANTHROPIC_API_KEY' if provider == 'anthropic' else 'OPENAI_API_KEY'} "
+                f"environment variable or pass it in the TUI settings."
+            )
+
+        if provider == "anthropic":
+            base_url = "https://api.anthropic.com/v1"
+            if not model:
+                model = "claude-sonnet-4-6-20250514"
+        elif provider == "openai":
+            base_url = "https://api.openai.com/v1"
+            if not model:
+                model = "gpt-4o"
+        else:
+            base_url = f"https://api.{provider}.com/v1"
+
+        return cls(base_url=base_url, model=model, api_key=api_key)
+
     def auto_pull(self, model_tag: str) -> bool:
         """Auto-pull a model via Ollama if not available. Returns True if successful."""
         import subprocess

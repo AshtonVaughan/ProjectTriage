@@ -642,35 +642,90 @@ def main_menu(console: Console) -> dict[str, Any] | None:
 
 def _new_hunt_flow(console: Console, config: dict[str, Any]) -> dict[str, Any] | None:
     """Full new hunt setup: provider -> model -> dual model -> target."""
-    # Step 1: Provider + model
-    result = provider_select_menu(console)
-    if not result:
-        return None
-    url, model = result
-    config["url"] = url
-    config["model"] = model
-
-    # Step 2: Dual-model mode
+    # Step 0: Local or Cloud?
     console.clear()
-    dual_choice = arrow_select(console, "Dual-Model Mode", [
-        "Single model (simpler, uses more tokens)",
-        "Dual model (recommended - big thinks, small executes)",
-        "Custom (choose your own fast + embed models)",
+    mode_choice = arrow_select(console, "LLM Mode", [
+        "Local LLM (Ollama/vLLM - free, runs on your GPU)",
+        "Cloud API: Anthropic Claude Sonnet 4.6 (best reasoning, ~$2-5/hunt)",
+        "Cloud API: OpenAI GPT-4o (~$2-5/hunt)",
+        "Cloud API: Custom endpoint",
     ], [
-        f"Use {model} for everything",
-        f"Use {model} for reasoning, auto-pick small model for execution",
-        "Manually specify fast and embedding models",
+        "Requires a local LLM server running",
+        "Uses claude-sonnet-4-6-20250514 via Anthropic API",
+        "Uses gpt-4o via OpenAI API",
+        "Any OpenAI-compatible API endpoint",
     ])
 
-    if dual_choice == 1:
-        # Auto-pick fast model
-        config["fast_model"] = "qwen3:4b"
-        config["embed_model"] = "nomic-embed-text"
-    elif dual_choice == 2:
+    if mode_choice == -1:
+        return None
+
+    if mode_choice == 0:
+        # Local LLM flow (existing)
+        result = provider_select_menu(console)
+        if not result:
+            return None
+        url, model = result
+        config["url"] = url
+        config["model"] = model
+        config["cloud_mode"] = False
+
+        # Dual-model mode for local
         console.clear()
-        config["fast_model"] = _text_input(console, "Fast model name", "qwen3:4b")
-        config["embed_model"] = _text_input(console, "Embedding model name", "nomic-embed-text")
-    else:
+        dual_choice = arrow_select(console, "Dual-Model Mode", [
+            "Single model (simpler, uses more tokens)",
+            "Dual model (recommended - big thinks, small executes)",
+            "Custom (choose your own fast + embed models)",
+        ], [
+            f"Use {model} for everything",
+            f"Use {model} for reasoning, auto-pick small model for execution",
+            "Manually specify fast and embedding models",
+        ])
+
+        if dual_choice == 1:
+            config["fast_model"] = "qwen3:4b"
+            config["embed_model"] = "nomic-embed-text"
+        elif dual_choice == 2:
+            console.clear()
+            config["fast_model"] = _text_input(console, "Fast model name", "qwen3:4b")
+            config["embed_model"] = _text_input(console, "Embedding model name", "nomic-embed-text")
+        else:
+            config["fast_model"] = ""
+            config["embed_model"] = ""
+
+    elif mode_choice in (1, 2):
+        # Cloud API mode
+        config["cloud_mode"] = True
+        if mode_choice == 1:
+            config["cloud_provider"] = "anthropic"
+            config["model"] = "claude-sonnet-4-6-20250514"
+            config["url"] = "https://api.anthropic.com/v1"
+            env_key = os.getenv("ANTHROPIC_API_KEY", "")
+        else:
+            config["cloud_provider"] = "openai"
+            config["model"] = "gpt-4o"
+            config["url"] = "https://api.openai.com/v1"
+            env_key = os.getenv("OPENAI_API_KEY", "")
+
+        if not env_key:
+            console.clear()
+            env_key = _text_input(console, f"Enter {'ANTHROPIC' if mode_choice == 1 else 'OPENAI'} API key")
+            if not env_key:
+                console.print("[red]API key required for cloud mode[/red]")
+                console.print("[dim]Press any key...[/dim]")
+                read_key()
+                return None
+        config["api_key"] = env_key
+        config["fast_model"] = ""
+        config["embed_model"] = ""
+
+    elif mode_choice == 3:
+        # Custom cloud endpoint
+        config["cloud_mode"] = True
+        console.clear()
+        config["url"] = _text_input(console, "API endpoint URL", "https://api.anthropic.com/v1")
+        config["model"] = _text_input(console, "Model name", "claude-sonnet-4-6-20250514")
+        config["api_key"] = _text_input(console, "API key")
+        config["cloud_provider"] = "custom"
         config["fast_model"] = ""
         config["embed_model"] = ""
 

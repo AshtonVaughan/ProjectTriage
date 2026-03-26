@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from core.config import Config
-from core.provider import Provider, KNOWN_BACKENDS
+from core.provider import Provider, ProviderInfo, KNOWN_BACKENDS
 from core.tool_registry import ToolRegistry
 from tools.recon import register_recon_tools
 from tools.scanner import register_scanner_tools
@@ -138,7 +138,17 @@ def _run_hunt(console: Console, tui_config: dict) -> None:
     embed_model = tui_config.get("embed_model", "") or None
 
     try:
-        if url:
+        if tui_config.get("cloud_mode"):
+            # Cloud API mode - Anthropic/OpenAI/Custom
+            api_key = tui_config.get("api_key", "")
+            cloud_provider = tui_config.get("cloud_provider", "anthropic")
+            provider = Provider.from_cloud_api(
+                provider=cloud_provider,
+                api_key=api_key,
+                model=model,
+            )
+            console.print(f"[green]Cloud API: {cloud_provider} / {model}[/green]")
+        elif url:
             provider = Provider.from_url(
                 url, model=model,
                 embed_model=embed_model, fast_model=fast_model,
@@ -150,10 +160,18 @@ def _run_hunt(console: Console, tui_config: dict) -> None:
         console.print(f"[red]{e}[/red]")
         return
 
-    info = provider.test_connection()
-    if not info:
-        console.print("[red]Cannot connect to LLM server.[/red]")
-        return
+    if tui_config.get("cloud_mode"):
+        # Skip test_connection for cloud APIs - just verify model is set
+        info = ProviderInfo(
+            name=tui_config.get("cloud_provider", "cloud"),
+            models=[provider.model],
+            supports_embeddings=False,
+        )
+    else:
+        info = provider.test_connection()
+        if not info:
+            console.print("[red]Cannot connect to LLM server.[/red]")
+            return
 
     if not provider.model and info.models:
         provider.model = info.models[0]
