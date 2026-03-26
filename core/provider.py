@@ -227,6 +227,9 @@ class Provider:
         action = ""
         action_input: dict[str, Any] = {}
 
+        # Strip Qwen3 thinking tags (model outputs <think>...</think> blocks)
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
         # Extract thought
         thought_match = re.search(r"Thought:\s*(.+?)(?=\nAction:|\Z)", raw, re.DOTALL)
         if thought_match:

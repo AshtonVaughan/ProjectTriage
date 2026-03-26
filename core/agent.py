@@ -567,14 +567,20 @@ class Agent:
 
             # Sanitize
             available = list(self.registry.tools.keys())
-            response.action = sanitize_action(response.action, available)
-            if response.action not in ("ADVANCE", "DONE", ""):
+            response.action = sanitize_action(response.action, available + ["SKIP", "skip"])
+            if response.action not in ("ADVANCE", "DONE", "SKIP", "skip", ""):
                 response.action_input = sanitize_inputs(
                     response.action, response.action_input
                 )
 
             # Handle special actions
-            if response.action == "DONE":
+            if response.action in ("DONE", "SKIP", "skip"):
+                if response.action in ("SKIP", "skip"):
+                    self.console.print("[yellow]>>> Skipping hypothesis - marked as dead end.[/yellow]")
+                    if self.ptt:
+                        self.ptt.block_path(f"{hyp.technique} on {hyp.endpoint}: skipped by agent")
+                    self.attack_graph.mark_step()
+                    continue
                 self.console.print("[green]>>> Agent signaled testing complete.[/green]")
                 break
 
